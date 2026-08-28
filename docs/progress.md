@@ -28,6 +28,8 @@ the end of every phase.
   ([0001](adr/0001-explicit-state-machine-orchestration.md)) and provider
   interfaces for external dependencies
   ([0002](adr/0002-provider-interfaces-for-external-dependencies.md)).
+- Pushed to GitHub: https://github.com/abhi9v-dev/Axiomora-AI (public,
+  branch `master`).
 
 **Known limitations:**
 
@@ -49,11 +51,21 @@ the end of every phase.
   root `tests/` directory are scaffolded with explanatory READMEs only; they
   are populated starting Phase 1/2/4/6 as each phase needs them.
 
-## Phase 1 — Demo warehouse and semantic catalog
+## Decision: demo domain changed to marketplace operations
+
+**2026-08-28**, before Phase 1 implementation began: the demo domain was
+changed from retail sales to marketplace operations (projects, tasks,
+departments, accounts), replacing the retail star schema entirely. See
+[ADR 0003](adr/0003-marketplace-operations-demo-domain.md) for full
+context. `docs/01`–`docs/10`, `CLAUDE.md` and `README.md` were updated
+accordingly; no code existed yet for the retail domain, so no code changes
+were needed.
+
+## Phase 1 — Synthetic marketplace-operations warehouse
 
 **Status: Not started.**
 
-## Phase 2 — Schema retrieval service
+## Phase 2 — Semantic catalog and Schema Agent
 
 **Status: Not started.**
 

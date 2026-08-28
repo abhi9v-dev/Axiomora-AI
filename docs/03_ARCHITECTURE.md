@@ -72,7 +72,7 @@ See [docs/adr/](adr/) for the detailed rationale behind these decisions.
 
 | Store                 | Purpose                                                                    |
 | ---------------------- | --------------------------------------------------------------------------- |
-| Warehouse              | Retail facts and dimensions, queried read-only                             |
+| Warehouse              | Marketplace operations tables/views (projects, tasks, departments, accounts), queried read-only |
 | Catalog/pgvector        | Embedded schema, glossary, measures and relationships                       |
 | Application DB          | Users, runs, messages, validations, actions and feedback                    |
 | Object/file storage     | Optional exported workbooks; local volume in MVP                            |

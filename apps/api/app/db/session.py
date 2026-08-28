@@ -2,7 +2,7 @@
 
 Phase 0 only needs a connectivity check for the readiness endpoint. ORM
 models, sessions-per-request and migrations are introduced in Phase 1
-alongside the retail star schema.
+alongside the marketplace-operations schema.
 """
 
 from __future__ import annotations

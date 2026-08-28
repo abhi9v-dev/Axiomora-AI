@@ -51,8 +51,10 @@ These hold for every phase, not just the one currently being implemented:
 - External actions require policy checks, explicit user approval and
   idempotency keys.
 - No secrets or production personal data in code, tests, prompts or logs.
-- Synthetic retail data only — no real personal information anywhere in this
-  repository.
+- Synthetic data only — no real personal information anywhere in this
+  repository. The demo domain is marketplace operations (projects, tasks,
+  departments, accounts), modeled on a real schema but populated entirely
+  with fabricated rows.
 
 ## Coding standards
 
@@ -98,7 +100,7 @@ bi-copilot/
 ├── apps/api/      FastAPI backend (Python 3.12, Pydantic v2, SQLAlchemy 2 async)
 ├── apps/web/      Next.js frontend (TypeScript strict, Tailwind CSS)
 ├── packages/contracts/  Versioned cross-language contracts (introduced as agents need them)
-├── data/seed/     Deterministic synthetic retail seed data (Phase 1+)
+├── data/seed/     Deterministic synthetic marketplace-operations seed data (Phase 1+)
 ├── data/glossary/ Business glossary / semantic catalog source documents (Phase 2+)
 ├── docs/          Product, architecture, security and roadmap specifications
 ├── infra/         Local/deployment infrastructure config (Docker init scripts, later IaC)

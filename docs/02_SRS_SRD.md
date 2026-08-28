@@ -53,7 +53,9 @@
 
 - MVP supports PostgreSQL first.
 - Source access uses a dedicated read-only role.
-- The demo uses synthetic retail data and contains no personal information.
+- The demo uses synthetic marketplace-operations data (projects, tasks,
+  departments, accounts) and contains no personal information — modeled on
+  a real schema, but every row is fabricated.
 - Claude API use is not inherently free; development may use credits or a
   local mock provider. Hosting can be free-tier, but model and Power BI costs
   depend on account/licensing.

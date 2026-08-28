@@ -14,19 +14,20 @@ generate unsafe queries and provide narratives without traceable evidence.
 
 ## Primary personas
 
-| Persona        | Need                                             | Permission level                |
-| -------------- | ------------------------------------------------- | -------------------------------- |
-| Finance user   | Ask margin and variance questions                  | Approved semantic views only     |
-| BI analyst     | Review SQL, validation and lineage                 | Query and approve actions        |
-| Data steward   | Maintain glossary and constraints                  | Govern schema knowledge          |
-| Administrator  | Configure connections and policies                 | System administration            |
+| Persona          | Need                                             | Permission level                |
+| ----------------- | ------------------------------------------------- | -------------------------------- |
+| Operations user  | Ask task throughput, hold-time and stuck-project questions | Approved semantic views only |
+| BI analyst       | Review SQL, validation and lineage                 | Query and approve actions        |
+| Data steward     | Maintain glossary and constraints                  | Govern schema knowledge          |
+| Administrator    | Configure connections and policies                 | System administration            |
 
 ## Core user story
 
-As a finance user, I ask "Why did margin drop in Q2 for the West region?"
-The system retrieves the correct definitions, clarifies ambiguity if
-necessary, executes safe SQL, validates the result, explains the drivers with
-cited numbers, and exports or publishes an approved artifact.
+As an operations user, I ask "Why did median task hold time spike for the
+Buyer department in Q2?" The system retrieves the correct definitions,
+clarifies ambiguity if necessary, executes safe SQL, validates the result,
+explains the drivers with cited numbers, and exports or publishes an
+approved artifact.
 
 ## Goals
 

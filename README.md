@@ -1,10 +1,16 @@
 # NL-to-Insight BI Copilot
 
 A governance-safe, multi-agent BI Copilot: ask a natural-language business
-question (e.g. *"Why did margin drop in Q2 for the West region?"*) and get
-back a verified, evidence-grounded answer — retrieved schema context,
-validated read-only SQL, checked results, a plain-English insight with
-citations, and an exportable Excel workbook.
+question (e.g. *"Why did median task hold time spike for the Buyer
+department in Q2?"*) and get back a verified, evidence-grounded answer —
+retrieved schema context, validated read-only SQL, checked results, a
+plain-English insight with citations, and an exportable Excel workbook.
+
+The demo domain is **marketplace operations**: projects, tasks, departments
+and accounts flowing through a workflow engine, with analytics views over
+task lifecycle timing (claim wait, hold time, SLA breaches) and project
+health (stuck/unclaimed detection). All seed data is synthetic — modeled on
+a real schema, populated with fabricated rows.
 
 Full product, architecture, security and roadmap specifications live in
 [`docs/`](docs/); start with [`CLAUDE.md`](CLAUDE.md).
@@ -104,7 +110,7 @@ bi-copilot/
 │   ├── api/               FastAPI backend (Python 3.12, Pydantic v2, SQLAlchemy 2 async)
 │   └── web/                Next.js frontend (TypeScript strict, Tailwind CSS)
 ├── packages/contracts/     Versioned cross-agent contracts (from Phase 3)
-├── data/seed/               Synthetic retail seed data (from Phase 1)
+├── data/seed/               Synthetic marketplace-operations seed data (from Phase 1)
 ├── data/glossary/            Business glossary / catalog source docs (from Phase 1/2)
 ├── docs/                      Product, architecture, security, roadmap specs + ADRs
 ├── infra/                      Local/deployment infra config (DB init script, etc.)

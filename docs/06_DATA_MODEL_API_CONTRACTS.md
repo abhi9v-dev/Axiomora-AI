@@ -39,8 +39,8 @@ target surface built incrementally from Phase 2 (catalog) through Phase 7
 
 ```json
 {
-  "source_id": "retail_demo",
-  "question": "Why did margin drop in Q2 for the West region?",
+  "source_id": "marketplace_demo",
+  "question": "Why did median task hold time spike for the Buyer department in Q2?",
   "timezone": "UTC"
 }
 ```
@@ -51,9 +51,9 @@ target surface built incrementally from Phase 2 (catalog) through Phase 7
 {
   "sql": "SELECT ...",
   "dialect": "postgres",
-  "referenced_objects": ["analytics.fact_sales", "analytics.dim_store"],
+  "referenced_objects": ["analytics.v_task_lifecycle", "organisation.department"],
   "assumptions": ["Q2 refers to the latest complete fiscal Q2"],
-  "parameters": { "region_code": "W" },
+  "parameters": { "department_name": "Buyer" },
   "confidence": 0.86
 }
 ```
@@ -63,7 +63,7 @@ target surface built incrementally from Phase 2 (catalog) through Phase 7
 ```json
 {
   "status": "pass",
-  "checks": [{ "name": "margin_range", "status": "pass", "details": "0..1" }],
+  "checks": [{ "name": "hold_hours_non_negative", "status": "pass", "details": ">= 0" }],
   "repairable": false,
   "feedback": null
 }
@@ -73,15 +73,15 @@ target surface built incrementally from Phase 2 (catalog) through Phase 7
 
 ```json
 {
-  "headline": "West margin decreased 7 percentage points",
-  "narrative": "The decrease was primarily associated with higher apparel COGS.",
+  "headline": "Buyer department median hold time increased 18 hours in Q2",
+  "narrative": "The increase was primarily associated with Supplier Compliance Review tasks taking far longer to be claimed and completed.",
   "claims": [
     {
-      "text": "Margin moved from 34% to 27%",
+      "text": "Median hold time moved from 9.5 hours to 27.4 hours",
       "evidence": ["result:r2:c4", "result:r3:c4"]
     }
   ],
-  "chart": { "type": "bar", "x": "category", "y": "margin_change_pp" }
+  "chart": { "type": "bar", "x": "task_subtype", "y": "hold_time_change_hrs" }
 }
 ```
 

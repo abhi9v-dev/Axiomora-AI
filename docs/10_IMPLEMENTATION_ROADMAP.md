@@ -11,19 +11,28 @@ endpoints and architecture decision records.
 
 **Exit:** one command starts web/API/database; CI is green.
 
-## Phase 1 — Demo warehouse and semantic catalog
+## Phase 1 — Synthetic marketplace-operations warehouse
 
-Build retail star schema, seed controlled Q1/Q2 margin changes, define
-glossary/measures/constraints, ingest chunks and embeddings.
+Build the marketplace-operations schema (`marketplace.projects`,
+`marketplace.task`, `organisation.department`, `organisation.account`) and
+the `analytics.v_task_lifecycle` / `analytics.v_project_status` rollup
+views. Generate deterministic synthetic data, including a known Q2
+hold-time spike in the Buyer department driven by Supplier Compliance
+Review tasks. Add database migrations and a repeatable seed command. Add
+tests confirming the expected business result.
 
-**Exit:** catalog search returns correct definitions for benchmark terms.
+**Exit:** one command (re)creates and seeds the schema; tests confirm the
+known Q2 Buyer-department hold-time anomaly and its top driver.
 
-## Phase 2 — Schema retrieval service
+## Phase 2 — Semantic catalog and Schema Agent
 
-Implement hybrid retrieval, tenant/source filters, scoring, citations and
-catalog versioning.
+Define glossary, table, column, relationship, measure and validation
+documents for the marketplace-operations schema. Add document chunking and
+versioning. Implement an embedding-provider interface with a deterministic
+test implementation, store embeddings in pgvector, filter by tenant/source,
+and return ranked citations with retrieval scores.
 
-**Exit:** retrieval recall@5 meets target.
+**Exit:** retrieval recall@5 meets target for the benchmark terms.
 
 ## Phase 3 — NL2SQL
 
@@ -106,11 +115,14 @@ code, propose a small plan, implement only that phase, run tests, and update
 
 **Phase 1 prompt**
 
-> Implement Phase 1 only. Create a synthetic retail star schema and
-> deterministic seed data showing a West-region Q2 margin decline driven by
-> apparel COGS. Add versioned glossary, measures, joins and validation
-> constraints. Implement repeatable migrations/seeding and tests that assert
-> the known business results. Do not call an LLM yet.
+> Implement Phase 1 only. Create the synthetic marketplace-operations schema
+> (`marketplace.projects`, `marketplace.task`, `organisation.department`,
+> `organisation.account`, plus the `analytics.v_task_lifecycle` /
+> `analytics.v_project_status` rollup views) and deterministic seed data
+> showing a Q2 hold-time spike in the Buyer department driven by Supplier
+> Compliance Review tasks. Implement repeatable migrations/seeding and tests
+> that assert the known business result. Do not call an LLM yet and do not
+> build the glossary/catalog ingestion — that is Phase 2.
 
 **Phase 2 prompt**
 

@@ -16,19 +16,21 @@ manual/local integration check that Postgres+pgvector starts via Compose).
 
 ## Golden benchmark dataset
 
-Seed a synthetic retail star schema with `fact_sales`, `dim_date`,
-`dim_store`, `dim_product` and controlled anomalies. Maintain at least 20
-questions across aggregation, time comparison, filtering, ranking,
-contribution analysis and ambiguity. Introduced in Phase 1.
+Seed a synthetic marketplace-operations schema (`marketplace.projects`,
+`marketplace.task`, `organisation.department`, `organisation.account`, and
+the `analytics.v_task_lifecycle` / `analytics.v_project_status` rollup
+views) with controlled anomalies. Maintain at least 20 questions across
+aggregation, time comparison, filtering, ranking, contribution analysis and
+ambiguity. Introduced in Phase 1.
 
 ## Example acceptance cases
 
 | ID    | Case                             | Expected                                            |
 | ----- | ----------------------------------- | ------------------------------------------------------ |
-| AT-01 | Margin drop, West, Q2                | Correct comparison and top drivers                       |
+| AT-01 | Hold-time spike, Buyer dept, Q2       | Correct comparison and top drivers                       |
 | AT-02 | Ambiguous "last quarter"              | Clarify fiscal/calendar if not configured                 |
 | AT-03 | Prompt asks to DELETE                 | Block before execution                                     |
-| AT-04 | Join duplicates revenue                | Validation fails or SQL is repaired                        |
+| AT-04 | Join duplicates task counts            | Validation fails or SQL is repaired                        |
 | AT-05 | Result is empty                        | Explain no data; do not invent insight                      |
 | AT-06 | Narrative adds unsupported number       | Evidence binding rejects response                            |
 | AT-07 | Repeat export request                   | One workbook per idempotency key                              |
