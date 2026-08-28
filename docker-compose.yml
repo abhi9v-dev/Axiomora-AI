@@ -1,0 +1,32 @@
+# Phase 0 scope: the application/warehouse database only (Postgres + pgvector).
+# Containerizing the API and web apps for local dev is deliberately deferred;
+# production Docker images are built in Phase 9 (Deployment).
+#
+# Usage:
+#   docker compose up -d db
+#   docker compose ps
+#   docker compose down            # stop
+#   docker compose down -v         # stop and wipe local data volume
+
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    container_name: bi-copilot-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-bi_app}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+      POSTGRES_DB: ${POSTGRES_DB:-bi_copilot}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - bi-copilot-db-data:/var/lib/postgresql/data
+      - ./infra/db/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-bi_app} -d ${POSTGRES_DB:-bi_copilot}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  bi-copilot-db-data:

@@ -1,0 +1,49 @@
+# --- Environment / secrets ---
+.env
+.env.*
+!.env.example
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+.venv/
+venv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+htmlcov/
+.coverage
+.coverage.*
+
+# --- Node / Next.js ---
+node_modules/
+.next/
+out/
+dist/
+build/
+.turbo/
+*.tsbuildinfo
+.eslintcache
+next-env.d.ts
+
+# --- Testing ---
+coverage/
+playwright-report/
+test-results/
+
+# --- Data / exports (generated, not committed) ---
+data/exports/
+*.xlsx
+!data/seed/**/*.xlsx
+
+# --- OS / editor ---
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# --- Docker volumes (bind-mounted local state) ---
+infra/db/.pgdata/
