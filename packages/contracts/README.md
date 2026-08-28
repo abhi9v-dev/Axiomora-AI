@@ -1,7 +1,12 @@
 # packages/contracts
 
-Reserved for versioned request/response contracts shared across agent
-boundaries (see [docs/06_DATA_MODEL_API_CONTRACTS.md](../../docs/06_DATA_MODEL_API_CONTRACTS.md)).
+Reserved for request/response contracts that need to be shared between the
+Python backend and the TypeScript frontend (see
+[docs/06_DATA_MODEL_API_CONTRACTS.md](../../docs/06_DATA_MODEL_API_CONTRACTS.md)).
 
-Populated starting Phase 3 (NL2SQL Agent), when the first versioned Pydantic
-JSON-schema contracts are introduced. Nothing here is used yet in Phase 0.
+Each agent's own versioned Pydantic contract lives beside that agent
+instead (e.g. `apps/api/app/nl2sql/schema.py` for the NL2SQL Agent,
+introduced in Phase 3) until it genuinely needs to be consumed outside the
+API process too. That's expected starting around Phase 6, when the
+frontend needs typed shapes for run/answer responses. Nothing here is used
+yet.

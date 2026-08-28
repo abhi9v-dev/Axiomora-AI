@@ -16,9 +16,9 @@ Full product, architecture, security and roadmap specifications live in
 [`docs/`](docs/); start with [`CLAUDE.md`](CLAUDE.md).
 
 **Status:** Phase 0 (Foundation), Phase 1 (Synthetic marketplace-operations
-warehouse) and Phase 2 (Semantic catalog and Schema Agent retrieval)
-complete. See [docs/progress.md](docs/progress.md) for phase-by-phase
-status.
+warehouse), Phase 2 (Semantic catalog and Schema Agent retrieval) and
+Phase 3 (NL2SQL agent) complete. See [docs/progress.md](docs/progress.md)
+for phase-by-phase status.
 
 ## Prerequisites
 
@@ -116,8 +116,11 @@ for the full list with placeholder values, and
 [docs/04_TRT.md](docs/04_TRT.md#configuration-contract) for the rationale.
 Nothing in this repository requires a paid API key: `LLM_PROVIDER=fake` and
 `EMBEDDING_PROVIDER=fake` (the defaults) use deterministic, zero-cost local
-providers. `POWER_BI_ENABLED` defaults to `false` and must stay that way
-outside an explicitly configured, licensed tenant (Phase 8).
+providers. Setting `LLM_PROVIDER=anthropic` (with a real `ANTHROPIC_API_KEY`)
+switches the NL2SQL agent to real, metered Claude API calls — this is
+opt-in and never free; see [docs/04_TRT.md](docs/04_TRT.md#cost-strategy).
+`POWER_BI_ENABLED` defaults to `false` and must stay that way outside an
+explicitly configured, licensed tenant (Phase 8).
 
 The API's typed `Settings` (`apps/api/app/config.py`) validates required
 variables at startup and fails fast — for example, it refuses to start with
@@ -133,7 +136,7 @@ bi-copilot/
 │   ├── api/               FastAPI backend (Python 3.12, Pydantic v2, SQLAlchemy 2 async)
 │   └── web/                Next.js frontend (TypeScript strict, Tailwind CSS)
 ├── alembic.ini              Alembic entrypoint config (points at /migrations)
-├── packages/contracts/     Versioned cross-agent contracts (from Phase 3)
+├── packages/contracts/     Reserved for contracts shared with the frontend (from Phase 6)
 ├── data/seed/               Synthetic marketplace-operations seed data + generator fixtures
 ├── data/glossary/            Semantic catalog source docs (tables/relationships/measures/terms/rules)
 ├── docs/                      Product, architecture, security, roadmap specs + ADRs
@@ -147,11 +150,14 @@ bi-copilot/
 - The API and web apps are not containerized — that's Phase 9 scope.
   `docker-compose.yml` currently runs only the database.
 - `packages/contracts` and the root `tests/` directory are still
-  placeholders (with READMEs explaining what arrives when) until the
-  phases that need them (Phase 3+).
+  placeholders (with READMEs explaining what arrives when) — each agent's
+  contracts live beside it (e.g. `apps/api/app/nl2sql/schema.py`) until a
+  contract genuinely needs to be shared with the TypeScript frontend too
+  (expected around Phase 6).
 - `EMBEDDING_PROVIDER` only supports `fake` so far (a deterministic
   feature-hashing embedding, not a stub — see
-  `apps/api/app/embeddings/fake.py`); a real provider is a later addition,
-  the same way Phase 3 adds a real `LLM_PROVIDER`.
+  `apps/api/app/embeddings/fake.py`); a real provider would be a later,
+  separate addition, the same pattern `LLM_PROVIDER=anthropic` follows for
+  the NL2SQL agent (Phase 3).
 - The warehouse schema targets PostgreSQL only, per the project's MVP
   constraint — no other SQL dialects are supported.

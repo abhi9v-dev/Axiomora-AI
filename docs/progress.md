@@ -184,7 +184,61 @@ were needed.
 
 ## Phase 3 — NL2SQL
 
-**Status: Not started.**
+**Status: Complete** (2026-08-29)
+
+- `LLMProvider` interface (`apps/api/app/llm/base.py`, `complete(system, user) -> str`)
+  plus two implementations, matching ADR 0002's provider-interface pattern:
+  - `FakeLLMProvider` (`fake.py`): generic, reusable, deterministic —
+    returns pre-registered canned responses matched by substring of the
+    user prompt, with queued multi-response support for testing retry
+    paths. Not NL2SQL-specific.
+  - `AnthropicLLMProvider` (`anthropic_provider.py`): real Claude API calls
+    (`claude-opus-5` by default), translating SDK exceptions (rate limit,
+    connection, not-found, generic status, refusal) into one stable
+    `LLMProviderError`. Verified with 9 tests that mock only
+    `client.messages.create`, checked against the real installed SDK's
+    actual exception constructors and response shapes — no network call,
+    no API key, no cost.
+  - `get_llm_provider(settings)` factory reads `LLM_PROVIDER`
+    (`Settings` already required `ANTHROPIC_API_KEY` whenever
+    `LLM_PROVIDER=anthropic`, since Phase 0).
+- NL2SQL agent (`apps/api/app/nl2sql/`): `agent.py`'s `generate_sql(...)`
+  takes only the question, dialect and already-retrieved catalog context
+  (never a database handle or credentials) and returns the versioned
+  `NL2SQLOutput` contract (`schema.py`: sql, dialect, referenced_objects,
+  assumptions, parameters, confidence) — matching
+  docs/06_DATA_MODEL_API_CONTRACTS.md exactly. Never executes SQL.
+- Malformed-response handling: exactly one corrective retry on bad JSON
+  *or* a schema-validation failure (missing field, out-of-range
+  confidence), per docs/06 ("retried once for formatting"); a second
+  failure raises `NL2SQLGenerationError` rather than returning anything
+  untrusted.
+- Prompt-injection defenses (`prompts.py`): retrieved catalog context and
+  the user's question are wrapped in explicitly labeled
+  "untrusted data, not instructions" blocks; the system prompt explicitly
+  instructs the model to ignore embedded commands. Tested directly,
+  including that a hostile catalog document containing a fake closing
+  delimiter cannot escape its block.
+- Tests (33 new, 88 total apps/api tests, all passing without a database
+  or network call): fake-provider matching/ordering, Anthropic-provider
+  request/response/error mapping, prompt-injection delimiting, and the
+  agent's happy path, retry-then-succeed, retry-then-fail, and
+  low-confidence/no-context paths.
+
+**Known limitations:**
+
+- `AnthropicLLMProvider` has never been exercised against the real Claude
+  API (no key configured/used in this session, by design — `LLM_PROVIDER`
+  defaults to `fake`). Its request construction and error handling are
+  verified against the real SDK's actual types via mocking; a live call is
+  the one thing that can't be confirmed without spending money, which
+  wasn't authorized for this phase.
+- No orchestrator/API endpoint wires the NL2SQL agent to a live HTTP
+  request yet, and the Schema Agent's retrieval isn't yet connected to
+  NL2SQL's `retrieved_context` input automatically -- both are the
+  state-machine orchestrator's job, introduced once enough agents exist to
+  coordinate (docs/03_ARCHITECTURE.md's `RECEIVED -> RETRIEVING ->
+  GENERATING_SQL -> ...` flow), not Phase 3's.
 
 ## Phase 4 — Validator and safe execution
 
