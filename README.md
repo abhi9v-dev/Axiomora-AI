@@ -16,9 +16,9 @@ Full product, architecture, security and roadmap specifications live in
 [`docs/`](docs/); start with [`CLAUDE.md`](CLAUDE.md).
 
 **Status:** Phase 0 (Foundation), Phase 1 (Synthetic marketplace-operations
-warehouse), Phase 2 (Semantic catalog and Schema Agent retrieval) and
-Phase 3 (NL2SQL agent) complete. See [docs/progress.md](docs/progress.md)
-for phase-by-phase status.
+warehouse), Phase 2 (Semantic catalog and Schema Agent retrieval), Phase 3
+(NL2SQL agent) and Phase 4 (Validator Agent and safe execution) complete.
+See [docs/progress.md](docs/progress.md) for phase-by-phase status.
 
 ## Prerequisites
 
@@ -142,7 +142,7 @@ bi-copilot/
 ├── docs/                      Product, architecture, security, roadmap specs + ADRs
 ├── infra/                      Local/deployment infra config (DB init script, etc.)
 ├── migrations/                  Alembic migration scripts (warehouse schema + catalog/pgvector)
-└── tests/                        Cross-cutting integration/E2E suites (from Phase 4/6)
+└── tests/                        Cross-app E2E suites (from Phase 6; backend integration tests live in apps/api/tests)
 ```
 
 ## Known limitations
@@ -161,3 +161,8 @@ bi-copilot/
   the NL2SQL agent (Phase 3).
 - The warehouse schema targets PostgreSQL only, per the project's MVP
   constraint — no other SQL dialects are supported.
+- No orchestrator/API endpoint calls `app.pipeline.answer_question` from a
+  live HTTP request yet, and it isn't wired to the Schema Agent's real
+  retrieval (`retrieved_context` is still a caller-supplied list) — both
+  are the state-machine orchestrator's job once enough agents exist to
+  coordinate.

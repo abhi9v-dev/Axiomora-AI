@@ -242,7 +242,82 @@ were needed.
 
 ## Phase 4 — Validator and safe execution
 
-**Status: Not started.**
+**Status: Complete** (2026-08-29)
+
+- Static SQL policy (`apps/api/app/validator/policy.py`): parses with
+  SQLGlot (postgres dialect), enforces exactly one statement that must be
+  a `Select` (rejects DDL/DML/multi-statement, and `SELECT ... INTO`,
+  which still parses as a Select but creates a table as a side effect --
+  found by testing, not assumed), requires every referenced table/view to
+  be fully schema-qualified and in `ALLOWED_OBJECTS`, and requires every
+  function SQLGlot doesn't recognize as standard SQL (`exp.Anonymous` --
+  empirically, this is exactly where every dangerous Postgres function
+  lands: `pg_read_file`, `dblink`, `pg_sleep`, `lo_import`,
+  `current_setting`/`set_config`, `pg_terminate_backend`, ...) to be in a
+  small explicit allowlist (just `age`). SQL comments cannot smuggle a
+  second statement or hide DDL, verified directly: AST parsing means a
+  comment's content is simply never part of the executable tree.
+- `ALLOWED_OBJECTS` (`allowlist.py`) is derived from the real ORM metadata
+  (`app.db.models`) rather than hand-maintained, so it cannot silently
+  drift from the actual schema; `catalog.*` is deliberately never
+  included (see ADR-equivalent note in the migration 0002 docstring).
+- Read-only executor (`executor.py`): runs only pre-validated SQL against
+  `WAREHOUSE_URL` (`bi_readonly`), sets `SET LOCAL statement_timeout`, and
+  fetches `row_limit + 1` rows to report truncation rather than silently
+  dropping data.
+- Result-shape checks (`result_checks.py`): empty result and row-limit
+  truncation are informational (`pass`/`warning`), never failures -- an
+  empty result is a legitimate outcome (docs/08's AT-05: explain "no
+  data," don't repair); a negative value in a duration/count column that
+  can never legitimately be negative (mirroring
+  `data/glossary/validation_rules.yaml`'s `hold_hours_non_negative`) is
+  the one hard failure, since it's an unambiguous bug signal. A
+  best-effort "comparison period completeness" heuristic warns when a
+  period-grouped result has only one distinct period.
+- Validator Agent (`agent.py`) ties policy + parameter-placeholder
+  matching + execution + result checks into one `ValidatorOutput`
+  (docs/06's contract): a policy violation, an unfilled `:placeholder`, or
+  a hard result-check failure all become `repairable=True` with concrete
+  `feedback` text; a DB-level execution error (bad column, genuine
+  timeout, ...) is caught and translated the same way rather than
+  propagating a raw exception.
+- `app.pipeline.answer_question`: the bounded repair loop (NL2SQL ->
+  Validator ->, if repairable, regenerate with feedback appended, up to
+  `MAX_SQL_REPAIRS` times total). Not the full state-machine orchestrator
+  yet -- just the NL2SQL+Validator coordination Phase 4 needs.
+- Tests (61 new, 149 total apps/api tests): 37 adversarial policy tests
+  (every threat in docs/07's "Threats to test" list, plus comment
+  obfuscation, `SELECT INTO`, unqualified names, catalog-schema access,
+  and 11 specific dangerous functions), allowlist sanity tests, pure
+  Python result-check tests, pipeline repair-loop tests (scripted
+  validator stub -- 1-pass, retry-then-pass, exhaust-then-fail,
+  non-repairable-stops-immediately, zero/negative `max_repairs`,
+  NL2SQL-failure-surfaces-as-`PipelineError`), and a live-database
+  integration test (executor row-limit/timeout enforcement, the full
+  pipeline answering the real Q2 Buyer/Compliance-Review question
+  correctly, and -- the ultimate proof -- a `FakeLLMProvider` that always
+  returns `DROP TABLE marketplace.task` getting exhausted by the repair
+  loop with the table still fully intact afterward) that self-skips
+  without a reachable database.
+- Corrected a stale claim from Phase 0 planning: root `tests/`'s README
+  said backend integration tests would start landing there "starting
+  Phase 4." They didn't -- Phase 1, 2 and 4's live-DB tests all correctly
+  belong in `apps/api/tests` (same pytest config, same CI job, only one
+  app involved). Updated both READMEs to say root `tests/` is for
+  cross-app suites only, starting Phase 6.
+
+**Known limitations:**
+
+- The live integration test (`test_validator_integration.py`) could not be
+  run against a real database in the session that built this phase, same
+  constraint as Phases 1-2 -- verified instead via the 37 offline
+  adversarial policy tests (the security-critical core, which needs no
+  database at all) and the scripted-stub pipeline tests. CI's
+  `pgvector/pgvector:pg16` service runs it for real.
+- No orchestrator/API endpoint exists yet to call `answer_question` from a
+  live HTTP request, and it isn't wired to the Schema Agent's real
+  retrieval -- `retrieved_context` is still a caller-supplied list, not
+  fetched internally. Both are later, cross-agent orchestration work.
 
 ## Phase 5 — Insight generation
 
