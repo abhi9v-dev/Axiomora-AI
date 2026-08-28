@@ -13,6 +13,26 @@ jobs:
   api:
     name: API (lint, type-check, test)
     runs-on: ubuntu-latest
+    services:
+      db:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: bi_app
+          POSTGRES_PASSWORD: changeme
+          POSTGRES_DB: bi_copilot
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U bi_app -d bi_copilot"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      # Matches the docker-compose.yml `db` service and the bi_readonly role
+      # the Phase 1 migration creates -- lets the live-database integration
+      # test (normally self-skipping) actually run in CI.
+      DATABASE_URL: postgresql+asyncpg://bi_app:changeme@localhost:5432/bi_copilot
+      WAREHOUSE_URL: postgresql+asyncpg://bi_readonly:changeme@localhost:5432/bi_copilot
     defaults:
       run:
         working-directory: apps/api

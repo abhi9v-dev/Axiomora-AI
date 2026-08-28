@@ -15,8 +15,9 @@ a real schema, populated with fabricated rows.
 Full product, architecture, security and roadmap specifications live in
 [`docs/`](docs/); start with [`CLAUDE.md`](CLAUDE.md).
 
-**Status:** Phase 0 (Foundation) complete. See
-[docs/progress.md](docs/progress.md) for phase-by-phase status.
+**Status:** Phase 0 (Foundation) and Phase 1 (Synthetic marketplace-operations
+warehouse) complete. See [docs/progress.md](docs/progress.md) for
+phase-by-phase status.
 
 ## Prerequisites
 
@@ -48,8 +49,20 @@ cd apps/api
 python -m venv .venv
 # Windows: .venv\Scripts\activate      macOS/Linux: source .venv/bin/activate
 pip install -e ".[dev]"
+
+# 4. Create the warehouse schema (run from the repo root, where alembic.ini lives)
+cd ../..                  # back to bi-copilot/
+alembic upgrade head
+
+# 5. Load deterministic synthetic data (run from apps/api)
+cd apps/api
+python -m app.db.seed
+
 uvicorn app.main:app --reload --port 8000
 ```
+
+Re-running `python -m app.db.seed` is safe and expected — it truncates and
+reinserts the same deterministic rows every time.
 
 In a second terminal:
 
@@ -66,6 +79,9 @@ that calls the API's `/health` and `/ready` endpoints.
 
 | Task                       | Command (from the given directory)                    |
 | ----------------------------- | ---------------------------------------------------------- |
+| Apply database migrations       | repo root: `alembic upgrade head`                              |
+| Roll back the last migration     | repo root: `alembic downgrade -1`                              |
+| Reseed synthetic warehouse data   | `apps/api`: `python -m app.db.seed` (repeatable/idempotent)   |
 | Run API dev server              | `apps/api`: `uvicorn app.main:app --reload --port 8000`      |
 | Run API tests                   | `apps/api`: `pytest`                                          |
 | Lint/format/type-check API       | `apps/api`: `ruff check .` · `black --check .` · `mypy app tests` |
@@ -109,19 +125,22 @@ bi-copilot/
 ├── apps/
 │   ├── api/               FastAPI backend (Python 3.12, Pydantic v2, SQLAlchemy 2 async)
 │   └── web/                Next.js frontend (TypeScript strict, Tailwind CSS)
+├── alembic.ini              Alembic entrypoint config (points at /migrations)
 ├── packages/contracts/     Versioned cross-agent contracts (from Phase 3)
-├── data/seed/               Synthetic marketplace-operations seed data (from Phase 1)
-├── data/glossary/            Business glossary / catalog source docs (from Phase 1/2)
+├── data/seed/               Synthetic marketplace-operations seed data + generator fixtures
+├── data/glossary/            Business glossary / catalog source docs (from Phase 2)
 ├── docs/                      Product, architecture, security, roadmap specs + ADRs
 ├── infra/                      Local/deployment infra config (DB init script, etc.)
-├── migrations/                  Alembic migrations (from Phase 1)
+├── migrations/                  Alembic migration scripts (warehouse schema + views)
 └── tests/                        Cross-cutting integration/E2E suites (from Phase 4/6)
 ```
 
-## Known limitations (Phase 0)
+## Known limitations
 
 - The API and web apps are not containerized — that's Phase 9 scope.
   `docker-compose.yml` currently runs only the database.
-- `packages/contracts`, `migrations`, `data/seed`, `data/glossary` and the
-  root `tests/` directory are placeholders (with READMEs explaining what
-  arrives when) until the phases that need them.
+- `packages/contracts`, `data/glossary` and the root `tests/` directory are
+  still placeholders (with READMEs explaining what arrives when) until the
+  phases that need them (Phase 2+).
+- The warehouse schema targets PostgreSQL only, per the project's MVP
+  constraint — no other SQL dialects are supported.

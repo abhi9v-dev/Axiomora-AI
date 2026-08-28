@@ -63,7 +63,56 @@ were needed.
 
 ## Phase 1 — Synthetic marketplace-operations warehouse
 
-**Status: Not started.**
+**Status: Complete** (2026-08-28)
+
+- ORM models (`apps/api/app/db/models.py`) for `organisation.department`,
+  `organisation.account`, `marketplace.projectstage`, `projectstatus`,
+  `project_sub_status`, `projects` and `task` — column names, bespoke
+  lookup-table PKs (e.g. `projectstage`, not `id`) and FK structure match
+  the real schema this project is modeled on (ADR 0003).
+- Alembic migration `0001` (`migrations/versions/`): creates the three
+  schemas, all seven tables, the three `analytics.*` rollup views
+  (`v_snapshot`, `v_task_lifecycle`, `v_project_status`, ported from the
+  supplied view SQL), and a `bi_readonly` role with `SELECT`-only grants
+  (plus default privileges for future tables) on all three schemas.
+  `alembic.ini` lives at the repo root; `migrations/env.py` runs migrations
+  through the async engine so no second DB driver is needed.
+- Deterministic synthetic seed generator (`apps/api/app/db/seed.py`,
+  `python -m app.db.seed`): loads the real (confirmed-synthetic)
+  `data/seed/organisation_department.csv` verbatim, generates 40 accounts,
+  150 projects and ~1000 tasks from a fixed seed, and repeatably
+  truncates+reinserts on every run. Deliberately encodes the known Phase 1
+  business result: **Buyer department median task hold time spikes in Q2
+  2026, driven by Supplier Onboarding / Compliance Review tasks** (~4x
+  baseline on that slice, ~1.4x on the department overall) — see ADR 0003.
+- Tests (`apps/api/tests/`): `test_seed_generator.py` (determinism, row
+  counts, no out-of-order timestamps, the Q2 anomaly asserted directly from
+  generated data — no DB needed), `test_warehouse_models.py` (ORM metadata
+  sanity checks), `test_migration_offline.py` (runs `alembic upgrade head
+  --sql` and checks the generated DDL — no DB needed),
+  `test_warehouse_integration.py` (live end-to-end: real migration, real
+  seed, queries the real view, confirms the read-only role can read but not
+  write — self-skips if `DATABASE_URL` isn't reachable). 22 passed, 1
+  skipped locally (no local Postgres); CI now runs a `pgvector/pgvector:pg16`
+  service so the integration test executes for real there.
+- Found and fixed a real bug via the pure-Python generator test before it
+  ever reached a database: horizon-end timestamp clamping could push
+  `startedon` before `claimedon`. Fixed by never fabricating a timestamp
+  past "now" rather than clamping backward after the fact.
+
+**Known limitations:**
+
+- The live integration test (`test_warehouse_integration.py`) could not be
+  run against a real database in the session that built this phase (no
+  Docker locally — same limitation noted in Phase 0). It is verified
+  offline (SQL generation) and unit-tested (generator logic) instead; run
+  `docker compose up -d db && alembic upgrade head && python -m app.db.seed`
+  and then `pytest` locally to exercise it for real, or check the `api` job
+  in GitHub Actions, which now runs it against a real Postgres service.
+- `bi_readonly`'s password is a hardcoded local/demo placeholder
+  (`changeme`, matching `.env.example`), consistent with the same
+  convention already used for `docker-compose.yml`'s `bi_app` user in
+  Phase 0. Rotate it for any non-local deployment.
 
 ## Phase 2 — Semantic catalog and Schema Agent
 
