@@ -13,13 +13,11 @@ from __future__ import annotations
 import datetime as dt
 
 from sqlalchemy import DateTime, ForeignKey, Text
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column
+
+from app.db.base import Base
 
 _TZ = DateTime(timezone=True)
-
-
-class Base(DeclarativeBase):
-    pass
 
 
 class ProjectStage(Base):

@@ -1,0 +1,60 @@
+# Recall@5 benchmark for catalog retrieval (docs/08_TEST_EVAL_ACCEPTANCE.md).
+# Not a catalog document itself -- loaded only by
+# apps/api/tests/test_recall_offline.py and test_catalog_integration.py.
+# Each query lists every object_name that would count as a correct top-5
+# hit; recall@5 = fraction of queries where at least one expected
+# object_name appears in the top 5 retrieved results.
+
+- query: "What does hold time mean for a task?"
+  expected_object_names: [hold_time, median_hold_time, hold_time_non_negative]
+
+- query: "How long does a task sit unclaimed before someone claims it?"
+  expected_object_names: [claim_wait_time]
+
+- query: "What is a stuck project and how is it defined?"
+  expected_object_names: [stuck_project, stuck_project_count, is_stuck_definition]
+
+- query: "What does the task quality flag column mean?"
+  expected_object_names: [quality_flag]
+
+- query: "What are the possible lifecycle states for a task?"
+  expected_object_names: [lifecycle_state]
+
+- query: "What columns does the task lifecycle analytics view have?"
+  expected_object_names: [analytics.v_task_lifecycle]
+
+- query: "What columns does the project status analytics view have?"
+  expected_object_names: [analytics.v_project_status]
+
+- query: "How is the snapshot as-of reference timestamp calculated?"
+  expected_object_names: [analytics.v_snapshot, snapshot_as_of]
+
+- query: "What departments exist in this warehouse?"
+  expected_object_names: [department_vocabulary, organisation.department]
+
+- query: "How does a task join to its project?"
+  expected_object_names: [task_to_project]
+
+- query: "How does a task join to its responsible department?"
+  expected_object_names: [task_to_department]
+
+- query: "What is the difference between task type and task subtype?"
+  expected_object_names: [task_type_vs_subtype]
+
+- query: "Can task timestamps ever be recorded out of order?"
+  expected_object_names: [timestamp_ordering]
+
+- query: "Is warehouse database access read-only?"
+  expected_object_names: [read_only_access]
+
+- query: "What calendar months does Q2 refer to?"
+  expected_object_names: [quarter_definition]
+
+- query: "How is the unclaimed task count measure calculated?"
+  expected_object_names: [unclaimed_task_count]
+
+- query: "What is the task completion rate measure?"
+  expected_object_names: [completion_rate]
+
+- query: "What columns does the person/account table contain?"
+  expected_object_names: [organisation.account]

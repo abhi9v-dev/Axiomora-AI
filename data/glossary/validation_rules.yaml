@@ -1,0 +1,67 @@
+# Validation / business-rule documentation. The Validator Agent (Phase 4)
+# and result-checking logic (Phase 5) consume these; they are retrievable
+# now so the Schema Agent can already surface them as context.
+
+- source_id: marketplace_demo
+  kind: validation_rule
+  object_name: timestamp_ordering
+  title: "Validation rule: task timestamps must be monotonic"
+  content: |
+    For every task, createddatetime <= claimedon <= startedon <= completedon
+    whenever each value is present (nulls are skipped, not treated as
+    violations). A task violating this ordering gets
+    analytics.v_task_lifecycle.quality_flag = 'ANOMALY_ORDER' and
+    is_measurable = false, and should be excluded from duration
+    calculations. This never occurs in the seeded synthetic data (by
+    construction -- see apps/api/app/db/seed.py) but a query or generated
+    result should not assume it can never occur against a different data
+    source.
+
+- source_id: marketplace_demo
+  kind: validation_rule
+  object_name: is_stuck_definition
+  title: "Validation rule: is_stuck definition"
+  content: |
+    analytics.v_project_status.is_stuck is TRUE only when project_status is
+    not Completed or Archived AND days_since_last_activity >= 14. It is
+    FALSE for any terminal project (Completed/Archived), regardless of
+    activity age. It is NULL (not false) when the project has no tasks at
+    all, since "stuck" is meaningless without any task activity to measure
+    against -- a query counting stuck projects should not silently coerce
+    null to false.
+
+- source_id: marketplace_demo
+  kind: validation_rule
+  object_name: hold_time_non_negative
+  title: "Validation rule: duration measures must be non-negative"
+  content: |
+    claim_wait_hrs, start_delay_hrs, working_time_hrs, assignee_hold_hrs and
+    total_duration_hrs on analytics.v_task_lifecycle must never be negative,
+    since they are computed from timestamps enforced to be monotonic (see
+    the timestamp-ordering rule). A negative value in a query result
+    indicates a validation failure upstream and should block the Insight
+    Agent rather than being explained away.
+
+- source_id: marketplace_demo
+  kind: validation_rule
+  object_name: evidence_binding
+  title: "Validation rule: numeric claims require evidence"
+  content: |
+    Every numeric statement in a generated narrative must cite the specific
+    result cell(s) it came from (architecture invariant: numeric narrative
+    claims require result-cell evidence references). A number that cannot
+    be traced back to a validated query result -- for example, a
+    Q2-over-Q1 percentage the model computed itself rather than reading
+    from the executed SQL's output -- must not appear in an insight.
+
+- source_id: marketplace_demo
+  kind: validation_rule
+  object_name: read_only_access
+  title: "Validation rule: warehouse access is read-only"
+  content: |
+    All warehouse SQL executes through the bi_readonly role, which is
+    granted SELECT only on the organisation, marketplace and analytics
+    schemas (see migrations/versions/0001_marketplace_operations_schema.py).
+    Any generated SQL containing DDL, DML or multiple statements must be
+    rejected before execution, never attempted and caught by a database
+    permission error.

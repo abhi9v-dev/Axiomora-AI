@@ -15,9 +15,10 @@ a real schema, populated with fabricated rows.
 Full product, architecture, security and roadmap specifications live in
 [`docs/`](docs/); start with [`CLAUDE.md`](CLAUDE.md).
 
-**Status:** Phase 0 (Foundation) and Phase 1 (Synthetic marketplace-operations
-warehouse) complete. See [docs/progress.md](docs/progress.md) for
-phase-by-phase status.
+**Status:** Phase 0 (Foundation), Phase 1 (Synthetic marketplace-operations
+warehouse) and Phase 2 (Semantic catalog and Schema Agent retrieval)
+complete. See [docs/progress.md](docs/progress.md) for phase-by-phase
+status.
 
 ## Prerequisites
 
@@ -54,15 +55,20 @@ pip install -e ".[dev]"
 cd ../..                  # back to bi-copilot/
 alembic upgrade head
 
-# 5. Load deterministic synthetic data (run from apps/api)
+# 5. Load deterministic synthetic warehouse data (run from apps/api)
 cd apps/api
 python -m app.db.seed
+
+# 6. Ingest the semantic catalog (glossary/table/measure docs -> pgvector)
+python -m app.catalog.ingest
 
 uvicorn app.main:app --reload --port 8000
 ```
 
-Re-running `python -m app.db.seed` is safe and expected — it truncates and
-reinserts the same deterministic rows every time.
+Re-running `python -m app.db.seed` or `python -m app.catalog.ingest` is
+safe and expected — the seed script truncates and reinserts the same
+deterministic rows every time, and the catalog ingester only re-embeds a
+document whose content actually changed since the last run.
 
 In a second terminal:
 
@@ -82,6 +88,7 @@ that calls the API's `/health` and `/ready` endpoints.
 | Apply database migrations       | repo root: `alembic upgrade head`                              |
 | Roll back the last migration     | repo root: `alembic downgrade -1`                              |
 | Reseed synthetic warehouse data   | `apps/api`: `python -m app.db.seed` (repeatable/idempotent)   |
+| Ingest/refresh the semantic catalog | `apps/api`: `python -m app.catalog.ingest` (repeatable/idempotent) |
 | Run API dev server              | `apps/api`: `uvicorn app.main:app --reload --port 8000`      |
 | Run API tests                   | `apps/api`: `pytest`                                          |
 | Lint/format/type-check API       | `apps/api`: `ruff check .` · `black --check .` · `mypy app tests` |
@@ -128,10 +135,10 @@ bi-copilot/
 ├── alembic.ini              Alembic entrypoint config (points at /migrations)
 ├── packages/contracts/     Versioned cross-agent contracts (from Phase 3)
 ├── data/seed/               Synthetic marketplace-operations seed data + generator fixtures
-├── data/glossary/            Business glossary / catalog source docs (from Phase 2)
+├── data/glossary/            Semantic catalog source docs (tables/relationships/measures/terms/rules)
 ├── docs/                      Product, architecture, security, roadmap specs + ADRs
 ├── infra/                      Local/deployment infra config (DB init script, etc.)
-├── migrations/                  Alembic migration scripts (warehouse schema + views)
+├── migrations/                  Alembic migration scripts (warehouse schema + catalog/pgvector)
 └── tests/                        Cross-cutting integration/E2E suites (from Phase 4/6)
 ```
 
@@ -139,8 +146,12 @@ bi-copilot/
 
 - The API and web apps are not containerized — that's Phase 9 scope.
   `docker-compose.yml` currently runs only the database.
-- `packages/contracts`, `data/glossary` and the root `tests/` directory are
-  still placeholders (with READMEs explaining what arrives when) until the
-  phases that need them (Phase 2+).
+- `packages/contracts` and the root `tests/` directory are still
+  placeholders (with READMEs explaining what arrives when) until the
+  phases that need them (Phase 3+).
+- `EMBEDDING_PROVIDER` only supports `fake` so far (a deterministic
+  feature-hashing embedding, not a stub — see
+  `apps/api/app/embeddings/fake.py`); a real provider is a later addition,
+  the same way Phase 3 adds a real `LLM_PROVIDER`.
 - The warehouse schema targets PostgreSQL only, per the project's MVP
   constraint — no other SQL dialects are supported.

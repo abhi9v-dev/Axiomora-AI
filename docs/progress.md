@@ -116,7 +116,71 @@ were needed.
 
 ## Phase 2 — Semantic catalog and Schema Agent
 
-**Status: Not started.**
+**Status: Complete** (2026-08-28)
+
+- 32 governed catalog source documents in `data/glossary/` (8 table/view,
+  4 relationship, 6 measure, 9 glossary-term, 5 validation-rule), each
+  validated against `app.catalog.schema.CatalogDocumentInput`.
+- `EmbeddingProvider` interface (`apps/api/app/embeddings/base.py`) plus
+  `FakeEmbeddingProvider` (`fake.py`): a deterministic, zero-cost feature-
+  hashing (word unigram/bigram, SHA-256, stopword-filtered, L2-normalized)
+  embedding — a real lexical-embedding technique, not a random stub — so
+  cosine similarity genuinely reflects shared vocabulary. `get_embedding_provider`
+  factory reads `EMBEDDING_PROVIDER` (only `fake` implemented so far).
+- Deterministic chunker (`app/catalog/chunking.py`): paragraph-packing up
+  to `max_chars`, falling back to an overlapping sliding window for any
+  single paragraph longer than that.
+- Migration `0002` (`catalog.document`, `catalog.chunk` with a pgvector
+  `Vector(256)` column and an HNSW cosine-distance index); `catalog.*` is
+  application infrastructure, not warehouse data, so it isn't exposed to
+  `bi_readonly` (per docs/03_ARCHITECTURE.md's Catalog/pgvector vs.
+  Warehouse data-store split).
+- Ingestion pipeline (`app/catalog/ingest.py`, `python -m app.catalog.ingest`):
+  content-hash-based, idempotent — unchanged documents are skipped,
+  changed ones get a new version and regenerated chunks.
+- Retrieval service (`app/catalog/retrieval.py`,
+  `search_catalog(session, query, tenant_id=, source_id=, ...)`): pgvector
+  cosine-distance search joined to `catalog.document` for tenant/source
+  filtering, returning typed `RetrievalResult`s with a score and a stable
+  citation string (`catalog:{kind}:{object_name}:chunk:{index}`).
+- Tests (30 new, 55 total apps/api tests): chunking and embedding unit
+  tests (determinism, dimension, normalization, related-vs-unrelated
+  discrimination), document-loading tests, ORM metadata tests for the new
+  tables, an extended offline migration-SQL test, a **pure-Python recall@5
+  benchmark** (18 queries, no database — verified the embedding/chunking/
+  ranking approach directly: **recall@5 = 0.94**), and a live-database
+  integration test (ingest + idempotency + real pgvector query + recall@5
+  via actual SQL + cross-source-filtering isolation) that self-skips
+  without a reachable database, same as Phase 1's.
+- Found and fixed two real bugs before they could reach a database:
+  (1) a query like "quality flag column" wasn't retrieving its glossary
+  entry because the entry's distinctive vocabulary ("read-only") lived only
+  in its `title`, never embedded — fixed by embedding `title + chunk`
+  instead of the chunk alone (recall@5 went from 0.83 to 0.94); (2)
+  `pgvector`'s `register_vector()` raises unconditionally if the `vector`
+  Postgres type doesn't exist yet, which would have broken *every*
+  connection (including the `/ready` health check) on a freshly created,
+  not-yet-migrated database — fixed by wrapping registration in
+  `contextlib.suppress`.
+- Refactored `Base` out of `app/db/models.py` into `app/db/base.py` so
+  warehouse and catalog models share one metadata registry for Alembic;
+  updated the Phase 1 metadata test to a subset check accordingly.
+
+**Known limitations:**
+
+- The live integration test (`test_catalog_integration.py`) could not be
+  run against a real database in the session that built this phase, same
+  constraint as Phase 1 — verified instead via the pure-Python recall@5
+  test, offline SQL generation, and a real `uvicorn` smoke test confirming
+  `/health`/`/ready` still behave correctly with the new connection-level
+  pgvector wiring in place. CI's `pgvector/pgvector:pg16` service (added in
+  Phase 1) runs it for real.
+- The fake embedding provider is lexical (shared-vocabulary), not
+  semantic — it has no notion of synonyms or word-form variants (one
+  benchmark query missed because "sit"/"sits" and "claim"/"claims" don't
+  share a token). This is an honest, documented limitation of a zero-cost,
+  deterministic provider, not a bug; a real provider would be added the
+  same way Phase 3 adds a real `LLM_PROVIDER`.
 
 ## Phase 3 — NL2SQL
 

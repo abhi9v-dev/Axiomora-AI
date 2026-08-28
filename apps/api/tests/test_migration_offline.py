@@ -39,5 +39,11 @@ def test_migration_generates_offline_sql() -> None:
         "CREATE OR REPLACE VIEW analytics.v_project_status",
         "CREATE ROLE bi_readonly",
         "GRANT SELECT ON ALL TABLES IN SCHEMA organisation, marketplace, analytics TO bi_readonly",
+        "CREATE EXTENSION IF NOT EXISTS vector",
+        "CREATE SCHEMA IF NOT EXISTS catalog",
+        "CREATE TABLE catalog.document",
+        "CREATE TABLE catalog.chunk",
+        "embedding VECTOR(256) NOT NULL",
+        "CREATE INDEX ix_chunk_embedding_hnsw ON catalog.chunk USING hnsw",
     ):
         assert expected in sql, f"expected {expected!r} in generated SQL"

@@ -1,0 +1,149 @@
+# Table and view documentation for the marketplace-operations warehouse.
+# Loaded and chunked by app.catalog.ingest; see docs/03_ARCHITECTURE.md and
+# docs/adr/0003-marketplace-operations-demo-domain.md for the schema this
+# describes.
+
+- source_id: marketplace_demo
+  kind: table
+  object_name: marketplace.task
+  title: "Table: marketplace.task"
+  content: |
+    marketplace.task is the workflow-task fact table: one row per unit of
+    work inside a project. Key columns: taskid (primary key), taskname,
+    tasktype and tasksubtype (e.g. tasktype "Supplier Onboarding" with
+    tasksubtype "Compliance Review"), taskstatus, projectid (foreign key to
+    marketplace.projects), departmentid (foreign key to
+    organisation.department, the department responsible for the task),
+    assigneeaccountid and completedbyaccountid (foreign keys to
+    organisation.account). Lifecycle timestamps, all nullable except
+    createddatetime, always in this order when present: createddatetime,
+    claimedon, startedon, completedon. A task with completedon set is done;
+    one with claimedon but no completedon is in progress or was abandoned;
+    one with neither is unclaimed. Most analytical questions about task
+    timing, department workload or SLA performance should query
+    analytics.v_task_lifecycle rather than this table directly, since that
+    view pre-computes the durations and quality flags analysts need.
+
+- source_id: marketplace_demo
+  kind: table
+  object_name: marketplace.projects
+  title: "Table: marketplace.projects"
+  content: |
+    marketplace.projects is the project dimension: one row per project that
+    groups related tasks. Key columns: projectid (primary key), projectname,
+    stage (foreign key to marketplace.projectstage), status (foreign key to
+    marketplace.projectstatus), project_sub_status_id (foreign key to
+    marketplace.project_sub_status, often null), projectcategory (a free-text
+    label such as "Procurement" or "Delivery"), creationdate, and
+    submittedat (when the project was formally submitted, sometimes null for
+    projects still in draft). A project's status name of "Completed" or
+    "Archived" marks it terminal; any other status counts as active. For
+    project-level health questions (age, task counts, whether a project is
+    stuck), prefer analytics.v_project_status, which joins this table to its
+    tasks and computes those metrics.
+
+- source_id: marketplace_demo
+  kind: table
+  object_name: marketplace.project_lookup_tables
+  title: "Tables: marketplace.projectstage, projectstatus, project_sub_status"
+  content: |
+    Three small lookup tables back marketplace.projects. marketplace.projectstage
+    (primary key column named projectstage, not id) has four values: Intake,
+    Sourcing, Delivery, Closeout -- the current workflow stage. marketplace.projectstatus
+    (primary key column named project_status, not id) has five values: Draft,
+    Active, On Hold, Completed, Archived -- Completed and Archived are the
+    only terminal statuses. marketplace.project_sub_status (primary key
+    column id) has four values: Pending Approval, In Review, Blocked, Ready
+    to Close -- a finer-grained sub-state, frequently left unset (null) on a
+    project. Join each to marketplace.projects via projects.stage,
+    projects.status and projects.project_sub_status_id respectively.
+
+- source_id: marketplace_demo
+  kind: table
+  object_name: organisation.department
+  title: "Table: organisation.department"
+  content: |
+    organisation.department is the department dimension: departmentid
+    (primary key), departmentname, description, createdby, creationdate,
+    lastmodifiedby, lastmodifieddate. Ten departments exist in this demo,
+    including Buyer, Supplier, Procurement Business Partner, Procurement
+    Assurance, Procurement Specialist Team, Customer Experience, Sales and
+    Account Manager, Delivery Team, Finance and Bloom. marketplace.task.departmentid
+    references this table and identifies which department is responsible for
+    a given task -- most "which department" or "by department" questions
+    join through analytics.v_task_lifecycle.department_name rather than this
+    table directly.
+
+- source_id: marketplace_demo
+  kind: table
+  object_name: organisation.account
+  title: "Table: organisation.account"
+  content: |
+    organisation.account is the person dimension: accountid (primary key),
+    forename, surname. All rows are synthetic, fabricated names -- no real
+    individuals. marketplace.task.assigneeaccountid references the person a
+    task is currently or was assigned to; completedbyaccountid references
+    who completed it (usually the same person). analytics.v_task_lifecycle
+    exposes a combined assignee_name column ("forename surname", or
+    "Unclaimed" when assigneeaccountid is null) so most questions about who
+    did the work should read that column rather than joining this table
+    directly.
+
+- source_id: marketplace_demo
+  kind: table
+  object_name: analytics.v_task_lifecycle
+  title: "View: analytics.v_task_lifecycle (primary table-task analytics view)"
+  content: |
+    analytics.v_task_lifecycle is the main view for task-level analysis: one
+    row per marketplace.task, already joined to its project, department and
+    assignee, with durations and quality flags pre-computed. Grain: one row
+    per taskid. Key columns: taskid, taskname, tasktype, tasksubtype,
+    taskstatus, projectid, projectname, project_stage, project_status,
+    project_sub_status, departmentid, department_name, assigneeaccountid,
+    assignee_name, createddatetime, claimedon, startedon, completedon,
+    claim_wait_hrs (createddatetime to claimedon), start_delay_hrs (claimedon
+    to startedon), working_time_hrs (startedon to completedon, null when
+    startedon is missing), assignee_hold_hrs (claimedon to completedon --
+    the full-coverage duration metric, since startedon is missing on many
+    real completions), total_duration_hrs (createddatetime to completedon),
+    lifecycle_state (Completed / In Progress / Claimed, not started /
+    Unclaimed), quality_flag (see the quality_flag glossary term and
+    validation rule), is_measurable (boolean; false only for the timestamp-
+    ordering anomaly case, which should never occur in this seed data), and
+    snapshot_as_of (the as_of timestamp from analytics.v_snapshot, repeated
+    on every row). This is the view most "why did X change" questions should
+    query, filtered and grouped by department_name, tasktype, tasksubtype
+    and a date_trunc('quarter', createddatetime) style time bucket.
+
+- source_id: marketplace_demo
+  kind: table
+  object_name: analytics.v_project_status
+  title: "View: analytics.v_project_status (project health view)"
+  content: |
+    analytics.v_project_status is the main view for project-level health: one
+    row per marketplace.projects row, joined to its stage/status/sub-status
+    names and a rollup of its tasks. Grain: one row per projectid. Key
+    columns: projectid, projectname, project_stage, project_status,
+    project_sub_status, projectcategory, project_created, submittedat,
+    project_age_days, age_bucket (a text bucket like "0-2 days" or "15+
+    days"), task_count, open_task_count, unclaimed_task_count,
+    last_task_event, days_since_last_activity, is_stuck (see the is_stuck
+    validation rule), is_active (true unless project_status is Completed or
+    Archived), and snapshot_as_of. Use this view for "how many projects are
+    stuck", "which projects have no recent activity" or project-aging
+    questions; use analytics.v_task_lifecycle instead for task-level or
+    department-level timing questions.
+
+- source_id: marketplace_demo
+  kind: table
+  object_name: analytics.v_snapshot
+  title: "View: analytics.v_snapshot (the analysis reference time)"
+  content: |
+    analytics.v_snapshot is a single-row, single-column view: as_of, the
+    latest timestamp across every task's createddatetime, claimedon,
+    startedon and completedon in marketplace.task. Both
+    analytics.v_task_lifecycle and analytics.v_project_status use this value
+    as "now" when computing ages and open/unclaimed durations, so all
+    relative-time calculations in this warehouse are anchored to the data
+    itself rather than the wall-clock time the query happens to run at --
+    important for reproducible answers.

@@ -1,0 +1,53 @@
+# Foreign-key relationship documentation for the marketplace-operations
+# warehouse. Each entry documents one join path a query might need.
+
+- source_id: marketplace_demo
+  kind: relationship
+  object_name: task_to_project
+  title: "Relationship: marketplace.task -> marketplace.projects"
+  content: |
+    marketplace.task.projectid references marketplace.projects.projectid.
+    Every task belongs to exactly one project (projectid is required, never
+    null). Join direction for "which project is this task part of" or "roll
+    task metrics up to the project level" questions. analytics.v_task_lifecycle
+    already performs this join and exposes projectname, project_stage,
+    project_status and project_sub_status directly.
+
+- source_id: marketplace_demo
+  kind: relationship
+  object_name: task_to_department
+  title: "Relationship: marketplace.task -> organisation.department"
+  content: |
+    marketplace.task.departmentid references organisation.department.departmentid.
+    departmentid is nullable, so a task can have no owning department.
+    Join direction for "which department is responsible" or "group by
+    department" questions. analytics.v_task_lifecycle already performs this
+    join and exposes department_name directly (as "Unassigned" when
+    departmentid is null), so prefer that column over joining
+    organisation.department directly.
+
+- source_id: marketplace_demo
+  kind: relationship
+  object_name: task_to_account
+  title: "Relationship: marketplace.task -> organisation.account"
+  content: |
+    marketplace.task.assigneeaccountid and marketplace.task.completedbyaccountid
+    both reference organisation.account.accountid; both are nullable.
+    assigneeaccountid is who the task is or was assigned to;
+    completedbyaccountid is who actually completed it (usually, but not
+    always, the same person). analytics.v_task_lifecycle already performs
+    the assigneeaccountid join and exposes assignee_name directly.
+
+- source_id: marketplace_demo
+  kind: relationship
+  object_name: project_to_stage_status_substatus
+  title: "Relationship: marketplace.projects -> stage/status/sub-status lookups"
+  content: |
+    marketplace.projects.stage references marketplace.projectstage.projectstage;
+    marketplace.projects.status references marketplace.projectstatus.project_status;
+    marketplace.projects.project_sub_status_id references
+    marketplace.project_sub_status.id (nullable -- many projects have no
+    sub-status set). All three are required for a human-readable project
+    state and are already joined and named in both
+    analytics.v_task_lifecycle (as project_stage/project_status/project_sub_status)
+    and analytics.v_project_status.

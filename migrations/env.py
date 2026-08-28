@@ -21,8 +21,10 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 API_DIR = REPO_ROOT / "apps" / "api"
 sys.path.insert(0, str(API_DIR))
 
+import app.db.catalog_models  # noqa: E402, F401  (registers catalog.* tables on Base.metadata)
+import app.db.models  # noqa: E402, F401  (registers marketplace/organisation tables)
 from app.config import Settings  # noqa: E402
-from app.db.models import Base  # noqa: E402
+from app.db.base import Base  # noqa: E402
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.

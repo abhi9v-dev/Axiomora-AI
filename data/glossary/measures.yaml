@@ -1,0 +1,78 @@
+# Business measure documentation: named, reusable metrics an NL2SQL agent
+# should recognize and translate consistently into SQL expressions.
+
+- source_id: marketplace_demo
+  kind: measure
+  object_name: median_hold_time
+  title: "Measure: median hold time"
+  content: |
+    Median hold time is the typical duration a task sits with its assignee
+    from being claimed to being completed. SQL: percentile_cont(0.5) WITHIN
+    GROUP (ORDER BY assignee_hold_hrs) over analytics.v_task_lifecycle,
+    filtered to rows where assignee_hold_hrs is not null (i.e. the task has
+    both claimedon and completedon), typically grouped by department_name
+    and/or a quarter derived from createddatetime. This is the primary
+    metric for "how long does it take X to finish a task" and SLA-drift
+    questions -- prefer the median over the average, since a few very slow
+    outlier tasks would otherwise dominate an average.
+
+- source_id: marketplace_demo
+  kind: measure
+  object_name: claim_wait_time
+  title: "Measure: claim wait time"
+  content: |
+    Claim wait time is how long a task sits unclaimed after creation before
+    someone takes ownership of it. Column: analytics.v_task_lifecycle.claim_wait_hrs
+    (createddatetime to claimedon, null until claimed). High claim wait time
+    indicates an intake or triage bottleneck, distinct from hold time (which
+    measures work-in-hand duration after claiming). Aggregate with
+    percentile_cont for a median, or count(*) filter (where claim_wait_hrs is
+    null and completedon is null) for currently-unclaimed volume.
+
+- source_id: marketplace_demo
+  kind: measure
+  object_name: working_time
+  title: "Measure: working time"
+  content: |
+    Working time is the duration between a task being started and completed.
+    Column: analytics.v_task_lifecycle.working_time_hrs (startedon to
+    completedon). This column is frequently null, because startedon is
+    omitted on roughly half of real completions in the source system --
+    never treat a null working_time_hrs as zero, and prefer
+    assignee_hold_hrs (claimedon to completedon) as the primary duration
+    measure when full coverage matters more than start-time precision.
+
+- source_id: marketplace_demo
+  kind: measure
+  object_name: stuck_project_count
+  title: "Measure: stuck project count / rate"
+  content: |
+    A stuck project count is count(*) filter (where is_stuck) over
+    analytics.v_project_status, optionally grouped by project_stage or
+    projectcategory; the rate divides that by count(*) filter (where
+    is_active) to normalize by active projects. See the is_stuck validation
+    rule for the exact definition (14+ days since the last task event, on a
+    non-terminal project).
+
+- source_id: marketplace_demo
+  kind: measure
+  object_name: unclaimed_task_count
+  title: "Measure: unclaimed task count"
+  content: |
+    Unclaimed task count is count(*) filter (where claimedon is null and
+    completedon is null) over analytics.v_task_lifecycle (equivalently,
+    lifecycle_state = 'Unclaimed'), typically grouped by department_name or
+    tasktype. At the project level, analytics.v_project_status.unclaimed_task_count
+    already provides this pre-aggregated per project.
+
+- source_id: marketplace_demo
+  kind: measure
+  object_name: completion_rate
+  title: "Measure: task completion rate"
+  content: |
+    Task completion rate is count(*) filter (where completedon is not null)
+    divided by count(*), over analytics.v_task_lifecycle, grouped by
+    tasktype, department_name or a time bucket. Distinguish from
+    quality_flag = 'COMPLETE_FULL', which additionally requires startedon to
+    be present -- completion rate alone does not care whether startedon was
+    recorded.

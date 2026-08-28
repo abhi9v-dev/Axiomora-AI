@@ -1,0 +1,113 @@
+# Business glossary: vocabulary a finance/operations user might use in a
+# question, mapped to what it means in this schema.
+
+- source_id: marketplace_demo
+  kind: glossary_term
+  object_name: hold_time
+  title: "Glossary: hold time"
+  content: |
+    "Hold time" (also "assignee hold time") means how long a task sits with
+    its assignee, measured from when it was claimed to when it was
+    completed. It is the primary duration metric for SLA and workload
+    questions in this warehouse. See analytics.v_task_lifecycle.assignee_hold_hrs
+    and the median hold time measure.
+
+- source_id: marketplace_demo
+  kind: glossary_term
+  object_name: claimed_vs_started_vs_completed
+  title: "Glossary: claimed, started, completed"
+  content: |
+    A task moves through up to four points in time: created (always
+    present), claimed (someone took ownership), started (work actually
+    began -- frequently not recorded), and completed (work finished). "Claim"
+    specifically means taking ownership, not beginning work; a task can be
+    claimed for a long time before being started or completed.
+
+- source_id: marketplace_demo
+  kind: glossary_term
+  object_name: stuck_project
+  title: "Glossary: stuck (project)"
+  content: |
+    A project is "stuck" when it is not in a terminal status (not Completed
+    or Archived) and no task on it has had any activity (created, claimed,
+    started or completed) for 14 or more days as of the analysis snapshot.
+    See analytics.v_project_status.is_stuck and the is_stuck validation
+    rule. A project with no tasks at all is neither stuck nor not-stuck --
+    is_stuck is null in that case, not false.
+
+- source_id: marketplace_demo
+  kind: glossary_term
+  object_name: quality_flag
+  title: "Glossary: quality flag"
+  content: |
+    "Quality flag" refers to analytics.v_task_lifecycle.quality_flag, a
+    per-task data-completeness label: COMPLETE_FULL (claimed, started and
+    completed, in that order), COMPLETE_NO_START (claimed and completed but
+    startedon missing -- common), COMPLETE_NO_CLAIM (completed but claimedon
+    missing -- rare), OPEN (not yet completed), or ANOMALY_ORDER (timestamps
+    out of the expected order -- should never occur in this seed data; see
+    the timestamp-ordering validation rule).
+
+- source_id: marketplace_demo
+  kind: glossary_term
+  object_name: lifecycle_state
+  title: "Glossary: lifecycle state"
+  content: |
+    "Lifecycle state" refers to analytics.v_task_lifecycle.lifecycle_state, a
+    coarser, always-current status label than quality_flag: Unclaimed
+    (nobody has claimed it), "Claimed, not started", In Progress (started
+    but not completed), or Completed. Prefer lifecycle_state for "what stage
+    is this task at right now" questions and quality_flag for data-quality
+    or completeness questions.
+
+- source_id: marketplace_demo
+  kind: glossary_term
+  object_name: snapshot_as_of
+  title: "Glossary: snapshot / as of"
+  content: |
+    "As of" or "the snapshot" refers to analytics.v_snapshot.as_of, the
+    latest timestamp present anywhere in marketplace.task. All "how old" or
+    "how long has this been open" calculations in this warehouse are
+    relative to that value, not to the current wall-clock time -- so answers
+    stay reproducible no matter when the query actually runs.
+
+- source_id: marketplace_demo
+  kind: glossary_term
+  object_name: task_type_vs_subtype
+  title: "Glossary: task type vs. task subtype"
+  content: |
+    "Task type" (marketplace.task.tasktype) is a broad category of work, e.g.
+    "Supplier Onboarding", "Sourcing Request", "Delivery Confirmation",
+    "Customer Escalation" or "Internal Review". "Task subtype"
+    (marketplace.task.tasksubtype) is a more specific kind of work within
+    that category, e.g. tasktype "Supplier Onboarding" has subtypes
+    "Compliance Review", "Bank Details Verification" and "Contract
+    Signature". Drill-down questions ("which specific kind of task is
+    driving this") should group by tasksubtype within a tasktype, not
+    tasktype alone.
+
+- source_id: marketplace_demo
+  kind: glossary_term
+  object_name: quarter_definition
+  title: "Glossary: quarter (Q1-Q4)"
+  content: |
+    Unless a fiscal calendar is configured for a data source (none is
+    configured for marketplace_demo), "Q1"/"Q2"/"Q3"/"Q4" mean calendar
+    quarters: Q1 = January-March, Q2 = April-June, Q3 = July-September,
+    Q4 = October-December, computed from createddatetime. A question naming
+    a quarter without a year should be clarified rather than guessed if more
+    than one year's data could match.
+
+- source_id: marketplace_demo
+  kind: glossary_term
+  object_name: department_vocabulary
+  title: "Glossary: department names"
+  content: |
+    The ten departments in this warehouse are Buyer, Supplier, Procurement
+    Business Partner, Procurement Assurance, Procurement Specialist Team,
+    Customer Experience, Sales and Account Manager, Delivery Team, Finance
+    and Bloom. "Buyer" specifically handles most Supplier Onboarding tasks,
+    including Compliance Review. Department names must match
+    organisation.department.departmentname (and
+    analytics.v_task_lifecycle.department_name) exactly; they are not
+    abbreviated elsewhere in the schema.

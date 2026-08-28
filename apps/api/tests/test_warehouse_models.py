@@ -7,7 +7,8 @@ from __future__ import annotations
 
 from sqlalchemy import DateTime
 
-from app.db.models import Base
+import app.db.models  # noqa: F401  (registers marketplace/organisation tables on Base.metadata)
+from app.db.base import Base
 
 EXPECTED_TABLES = {
     "organisation.department",
@@ -21,7 +22,11 @@ EXPECTED_TABLES = {
 
 
 def test_expected_tables_are_registered() -> None:
-    assert set(Base.metadata.tables.keys()) == EXPECTED_TABLES
+    # Base.metadata is shared with app.db.catalog_models (Phase 2), so this
+    # checks the warehouse tables are present rather than an exact set --
+    # other test modules importing catalog models in the same pytest
+    # session would otherwise make this test order-dependent.
+    assert set(Base.metadata.tables.keys()) >= EXPECTED_TABLES
 
 
 def test_lookup_table_primary_keys_match_source_schema() -> None:
