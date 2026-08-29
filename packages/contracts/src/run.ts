@@ -151,3 +151,13 @@ export interface RunAcceptedResponse {
 export function isTerminalStatus(status: RunStatus): boolean {
   return (TERMINAL_STATUSES as RunStatus[]).includes(status);
 }
+
+/** Only "export_excel" is implemented (Phase 7); the Power BI types exist
+ * so the client can name a specific not-yet-available action rather than
+ * only ever offering export -- see apps/api/app/action/schema.py. */
+export type ActionType = "export_excel" | "power_bi_push" | "power_bi_refresh" | "power_bi_replace";
+
+export interface ActionRequest {
+  type: ActionType;
+  idempotency_key: string;
+}

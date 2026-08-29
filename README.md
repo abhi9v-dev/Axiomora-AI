@@ -18,8 +18,9 @@ Full product, architecture, security and roadmap specifications live in
 **Status:** Phase 0 (Foundation), Phase 1 (Synthetic marketplace-operations
 warehouse), Phase 2 (Semantic catalog and Schema Agent retrieval), Phase 3
 (NL2SQL agent), Phase 4 (Validator Agent and safe execution), Phase 5
-(Insight generation) and Phase 6 (Frontend) complete. See
-[docs/progress.md](docs/progress.md) for phase-by-phase status.
+(Insight generation), Phase 6 (Frontend) and Phase 7 (Action agent and
+Excel) complete. See [docs/progress.md](docs/progress.md) for
+phase-by-phase status.
 
 ## Prerequisites
 
@@ -87,6 +88,8 @@ question on the Ask page) — since `app.llm.demo` only scripts that one
 canonical, deliberately-seeded scenario; any other question will complete
 the flow (progress, then a clear failure state) but won't produce a real
 answer without `LLM_PROVIDER=anthropic` and a real `ANTHROPIC_API_KEY`.
+Once answered, "Export Excel" downloads a formatted workbook (Summary,
+Data, SQL & Evidence, Validation sheets) of that run.
 
 ## Everyday commands
 
@@ -189,8 +192,17 @@ bi-copilot/
   — any other question completes the flow but fails at NL2SQL generation,
   by design (a bare `FakeLLMProvider` has no other scripted responses).
 - The Playwright E2E suite (`tests/e2e`) could not be run against real
-  servers in the session that built Phase 6 — no Docker/Postgres in that
-  environment, same constraint as every other live-database test in this
-  project. `playwright test --list` was used to verify the suite parses;
-  CI's `e2e` job runs it for real, end to end, against a real Postgres
-  service.
+  servers in the sessions that built Phases 6-7 — no Docker/Postgres in
+  that environment, same constraint as every other live-database test in
+  this project. `playwright test --list` was used to verify the suite
+  parses; CI's `e2e` job runs it for real, end to end, against a real
+  Postgres service.
+- `runs.action`'s `approved_by` is a fixed `"result_owner"` placeholder —
+  there's no auth/user-identity system in this project (no phase in the
+  roadmap adds one), so a real approver identity isn't available to
+  record yet.
+- Excel export (`export_excel`) is the only implemented action —
+  everything Power BI (docs/07's action policy table: push rows, dataset
+  refresh, replace dataset/report) is feature-flagged/prohibited and
+  rejected with a clear "not available yet" reason until Phase 8; "save
+  shared Excel" stays disabled, as the policy table specifies for the MVP.

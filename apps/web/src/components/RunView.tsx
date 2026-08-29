@@ -3,12 +3,15 @@
 import { useMemo, useState } from "react";
 import type { RunSnapshot } from "@bi-copilot/contracts";
 import { AgentProgress } from "@/components/AgentProgress";
+import { ActionDialog } from "@/components/ActionDialog";
 import { ClarificationCard } from "@/components/ClarificationCard";
 import { EvidenceDrawer } from "@/components/EvidenceDrawer";
 import { InsightNarrative } from "@/components/InsightNarrative";
 import { KpiGrid } from "@/components/KpiGrid";
 import { ResultDataGrid } from "@/components/ResultDataGrid";
 import { ValidationBadge } from "@/components/ValidationBadge";
+import { requestExcelExport, triggerBrowserDownload } from "@/lib/api";
+import { getApiBaseUrl } from "@/lib/env";
 
 interface Props {
   snapshot: RunSnapshot;
@@ -33,9 +36,27 @@ const IN_PROGRESS_STATUSES: RunSnapshot["status"][] = [
  * /runs/[id] (an existing run, possibly still in progress) so both render
  * identically once they have a RunSnapshot. */
 export function RunView({ snapshot, isSubmitting, onAnswerClarification, onCancel }: Props) {
+  const baseUrl = getApiBaseUrl();
   const [selectedClaimIndex, setSelectedClaimIndex] = useState<number | null>(null);
+  const [isExportDialogOpen, setIsExportDialogOpen] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
   const latestAttempt = snapshot.attempts.at(-1) ?? null;
   const hasValidatedResult = latestAttempt?.validator.status === "pass";
+
+  const handleExportConfirm = async () => {
+    setIsExporting(true);
+    setExportError(null);
+    try {
+      const { blob, filename } = await requestExcelExport(baseUrl, snapshot.run_id);
+      triggerBrowserDownload(blob, filename);
+      setIsExportDialogOpen(false);
+    } catch (err) {
+      setExportError(err instanceof Error ? err.message : "Failed to export the workbook.");
+    } finally {
+      setIsExporting(false);
+    }
+  };
 
   const highlightedCells = useMemo(() => {
     if (selectedClaimIndex === null || !snapshot.insight) return undefined;
@@ -82,7 +103,19 @@ export function RunView({ snapshot, isSubmitting, onAnswerClarification, onCance
 
       {hasValidatedResult ? (
         <>
-          <ValidationBadge validator={latestAttempt?.validator} />
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <ValidationBadge validator={latestAttempt?.validator} />
+            <button
+              type="button"
+              onClick={() => {
+                setExportError(null);
+                setIsExportDialogOpen(true);
+              }}
+              className="rounded-md border border-neutral-300 px-3 py-1.5 text-xs font-semibold text-neutral-700 hover:border-accent hover:text-accent"
+            >
+              Export Excel
+            </button>
+          </div>
           <KpiGrid result={latestAttempt?.validator.result} />
           <InsightNarrative
             insight={snapshot.insight}
@@ -98,6 +131,16 @@ export function RunView({ snapshot, isSubmitting, onAnswerClarification, onCance
           />
           <EvidenceDrawer snapshot={snapshot} />
         </>
+      ) : null}
+
+      {isExportDialogOpen ? (
+        <ActionDialog
+          dataTimestamp={snapshot.completed_at}
+          isSubmitting={isExporting}
+          error={exportError}
+          onConfirm={handleExportConfirm}
+          onCancel={() => setIsExportDialogOpen(false)}
+        />
       ) : null}
     </div>
   );

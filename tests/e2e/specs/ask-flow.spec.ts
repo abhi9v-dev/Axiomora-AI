@@ -43,6 +43,29 @@ test.describe("Ask flow", () => {
     await expect(page.getByText(/Run ID:/)).toBeVisible();
   });
 
+  test("exports a validated answer as a downloadable workbook", async ({ page }) => {
+    await page.goto("/ask");
+    await page.getByRole("button", { name: DEMO_QUESTION }).click();
+    await page.getByRole("button", { name: "Ask", exact: true }).click();
+    await expect(page.getByText("Validated", { exact: true })).toBeVisible({ timeout: 30_000 });
+
+    // Byte-level content and same-idempotency-key deduplication are
+    // covered in apps/api/tests/test_workbook.py and
+    // test_action_store_integration.py; this checks the click-through UX
+    // actually produces a real download end to end (AT-07's "approved run
+    // downloads a correct workbook").
+    await page.getByRole("button", { name: "Export Excel" }).click();
+    await expect(page.getByRole("dialog")).toBeVisible();
+    await expect(page.getByText("Download to your device")).toBeVisible();
+
+    const downloadPromise = page.waitForEvent("download");
+    await page.getByRole("button", { name: "Download" }).click();
+    const download = await downloadPromise;
+
+    expect(download.suggestedFilename()).toMatch(/^bi-copilot-run-.*\.xlsx$/);
+    await expect(page.getByRole("dialog")).not.toBeVisible();
+  });
+
   test("a run's own page reproduces the same answer from history", async ({ page }) => {
     await page.goto("/ask");
     await page.getByRole("button", { name: DEMO_QUESTION }).click();

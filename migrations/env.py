@@ -21,6 +21,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 API_DIR = REPO_ROOT / "apps" / "api"
 sys.path.insert(0, str(API_DIR))
 
+import app.db.action_models  # noqa: E402, F401  (registers runs.action on Base.metadata)
 import app.db.catalog_models  # noqa: E402, F401  (registers catalog.* tables on Base.metadata)
 import app.db.models  # noqa: E402, F401  (registers marketplace/organisation tables)
 import app.db.run_models  # noqa: E402, F401  (registers runs.* tables on Base.metadata)

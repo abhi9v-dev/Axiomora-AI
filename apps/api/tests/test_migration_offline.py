@@ -50,5 +50,9 @@ def test_migration_generates_offline_sql() -> None:
         "retrieved_context JSONB DEFAULT '[]' NOT NULL",
         "attempts JSONB DEFAULT '[]' NOT NULL",
         "CREATE INDEX ix_run_tenant_created ON runs.run",
+        "CREATE TABLE runs.action",
+        "CONSTRAINT uq_action_run_idempotency_key UNIQUE (run_id, idempotency_key)",
+        "FOREIGN KEY(run_id) REFERENCES runs.run (id) ON DELETE CASCADE",
+        "CREATE INDEX ix_action_run_id ON runs.action",
     ):
         assert expected in sql, f"expected {expected!r} in generated SQL"

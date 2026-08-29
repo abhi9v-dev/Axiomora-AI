@@ -8,6 +8,7 @@ from __future__ import annotations
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.actions import router as actions_router
 from app.api.health import router as health_router
 from app.api.runs import router as runs_router
 from app.config import get_settings
@@ -32,6 +33,7 @@ def create_app() -> FastAPI:
 
     app.include_router(health_router)
     app.include_router(runs_router)
+    app.include_router(actions_router)
 
     return app
 

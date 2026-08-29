@@ -535,7 +535,96 @@ were needed.
 
 ## Phase 7 — Action agent and Excel
 
-**Status: Not started.**
+**Status: Complete** (2026-08-30)
+
+- **Action policy** (`apps/api/app/action/policy.py`, `evaluate_action_policy`):
+  only `export_excel` is implemented (`ALLOWED_ACTION_TYPES`) -- every
+  Power BI destination (docs/07_SECURITY_GOVERNANCE.md's action policy
+  table: push rows, dataset refresh, replace dataset/report) is
+  feature-flagged/prohibited and simply doesn't exist yet (Phase 8), so a
+  request for one is rejected with a specific "not available yet" reason
+  rather than a generic validation error. An export is otherwise allowed
+  only once the run has actually reached `READY` with a passing,
+  result-bearing validator on its latest attempt (CLAUDE.md: "failed
+  validation blocks... the Action Agent") -- checked defensively even
+  though `READY` should already imply this. Excel needs no
+  destination-specific approval beyond the requester's own click (the
+  policy table: "Download Excel -- Allowed for result owner -- User
+  click"), unlike the Power BI destinations Phase 8 will add.
+- **Idempotency** (`runs.action`, migration `0004`; `app/action/store.py`):
+  a real database-level unique constraint on `(run_id, idempotency_key)`
+  is what actually enforces docs/07's "action requests use idempotency
+  keys" -- not just an application-level check, which would race under
+  concurrent identical requests. `app.api.actions` catches the resulting
+  `IntegrityError` and re-fetches the winning row rather than surfacing a
+  500, so two requests racing on the same key both succeed with the same
+  outcome. A **rejected** request is recorded too (status `rejected` +
+  reason), matching docs/07's "audit events... action approvals and
+  outcomes" -- rejection is an outcome, not a non-event; repeating a
+  rejected key returns the same rejection rather than re-evaluating policy.
+- **Workbook** (`app/action/workbook.py`, `build_workbook`, via
+  `openpyxl`): four sheets --  **Summary** (question, run ID, status, data
+  timestamp, headline, narrative, numbered claims with their evidence
+  citations), **Data** (the winning attempt's full result table),
+  **SQL & Evidence** (the winning SQL, its parameters, assumptions and the
+  retrieved catalog definitions used), **Validation** (every check from
+  *every* attempt, not just the winning one, so the repair history stays
+  visible for lineage). Generated fresh from the already-validated,
+  immutable `RunSnapshot` on every request rather than written to disk
+  (docs/09_DEPLOYMENT_OPERATIONS.md: "Excel files generated on demand and
+  downloaded immediately") -- deterministic given the same snapshot, so a
+  repeated download for the same key is simply regenerated, not re-served
+  from a cache; no object storage was needed for this phase.
+- **API**: `POST /api/v1/runs/{run_id}/actions` (docs/06's one action
+  endpoint) handles create-and-idempotent-replay in a single call, mirroring
+  a standard Idempotency-Key REST pattern -- for `export_excel` the
+  response body *is* the workbook (`Content-Disposition: attachment`,
+  `X-Action-Id` header), not a JSON receipt, so the endpoint's return type
+  varies by action type by design (a future Power BI action would return
+  JSON instead).
+- **Frontend**: `ActionDialog` (deferred from Phase 6, docs/05's component
+  list) shows destination, effect and data timestamp before any request is
+  sent (docs/07: "the confirmation dialog must identify destination,
+  effect, data timestamp and whether existing content changes"), wired
+  into `RunView` as an "Export Excel" button next to `ValidationBadge`,
+  visible only once a validated result exists. Each click generates a
+  fresh idempotency key client-side (`crypto.randomUUID()`) -- a
+  deliberate choice documented in `app/lib/api.ts`: idempotency exists to
+  make a *retry* of the same request safe, not to deduplicate genuinely
+  separate user-initiated clicks. A successful response is saved via the
+  standard blob + throwaway-anchor browser download pattern.
+- **E2E**: `tests/e2e/specs/ask-flow.spec.ts` gained a fourth scenario --
+  asks the seeded demo question, opens the export dialog, confirms, and
+  asserts a real browser download event fires with a `bi-copilot-run-*.xlsx`
+  filename (AT-07's "approved run downloads a correct workbook"; the
+  byte-level content and same-key deduplication are covered by the Python
+  suite instead, since Playwright has no xlsx-reading library installed).
+- Tests: 22 new backend tests (244 total `apps/api` tests: 239 passed, 5
+  skipped -- the same self-skipping live-DB pattern as every prior phase,
+  now also covering `test_action_store_integration.py`'s unique-constraint
+  check), covering the policy (allowed/blocked types, not-ready runs,
+  defense-in-depth against a failing result), the workbook (all four
+  sheets' structure and content, read back with `openpyxl` itself), the
+  ORM model, the offline migration SQL, and the API layer (success,
+  idempotent replay, policy rejection + recorded audit outcome, a
+  simulated concurrent-insert race, 404/422 mapping). 8 new frontend tests
+  (36 total `apps/web` tests) covering `ActionDialog` directly and the
+  full `RunView` export flow (confirm-and-download, error-stays-open,
+  cancel, button hidden until ready).
+
+**Known limitations:**
+
+- The Playwright suite's new export scenario could not be run against real
+  servers in this session -- same constraint as every live-database/E2E
+  test in this project since Phase 1; `playwright test --list` verified it
+  parses, CI's `e2e` job runs it for real.
+- `runs.action` has no `approved_by` beyond a fixed `"result_owner"`
+  placeholder -- there's no auth/user-identity system in this project (no
+  phase in the roadmap adds one), so a real approver identity isn't
+  available to record yet.
+- "Save shared Excel" (docs/07's action policy table) stays disabled, as
+  the table specifies for the MVP -- only the download-to-device path
+  (`export_excel`) is implemented.
 
 ## Phase 8 — Power BI adapter
 
