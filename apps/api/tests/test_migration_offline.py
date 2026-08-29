@@ -45,5 +45,10 @@ def test_migration_generates_offline_sql() -> None:
         "CREATE TABLE catalog.chunk",
         "embedding VECTOR(256) NOT NULL",
         "CREATE INDEX ix_chunk_embedding_hnsw ON catalog.chunk USING hnsw",
+        "CREATE SCHEMA IF NOT EXISTS runs",
+        "CREATE TABLE runs.run",
+        "retrieved_context JSONB DEFAULT '[]' NOT NULL",
+        "attempts JSONB DEFAULT '[]' NOT NULL",
+        "CREATE INDEX ix_run_tenant_created ON runs.run",
     ):
         assert expected in sql, f"expected {expected!r} in generated SQL"

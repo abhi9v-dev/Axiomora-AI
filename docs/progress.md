@@ -406,7 +406,132 @@ were needed.
 
 ## Phase 6 — Frontend
 
-**Status: Not started.**
+**Status: Complete** (2026-08-29)
+
+- **Orchestrator** (`apps/api/app/orchestrator/`): the first real
+  implementation of docs/03_ARCHITECTURE.md's state machine, collapsed to
+  the granularity Phase 4's `validate_and_execute` actually exposes
+  (`RECEIVED -> RETRIEVING -> GENERATING_SQL -> VALIDATING -> (REPAIR_SQL
+  -> GENERATING_SQL -> VALIDATING)* -> GENERATING_INSIGHT -> READY`, with
+  `NEEDS_CLARIFICATION`/`FAILED`/`CANCELLED` as the other terminal
+  states). Deliberately reimplements the repair loop rather than calling
+  `app.pipeline.answer_question` as one black box, so each state is
+  individually observable over SSE as it happens (docs/05's "streaming
+  stepper... no fake percentages") -- `app.pipeline` stays the tested,
+  non-HTTP, single-call coordinator it always was; `app.orchestrator.service`
+  is the persisted, event-publishing, HTTP-facing one, built on the same
+  underlying agents (`generate_sql`, `validate_and_execute`,
+  `generate_insight`) with no changes to any of them.
+  - `create_run`/`execute_run`/`record_clarification`/`cancel_run`
+    (`service.py`): fast request-scoped operations vs. the long-running
+    pipeline run, split explicitly so `app.api.runs` can respond to a
+    POST immediately and run the pipeline as a background task.
+  - Clarification triggers on empty/low-score retrieval or low NL2SQL
+    confidence on the first attempt only (`RETRIEVAL_MIN_SCORE`/
+    `NL2SQL_MIN_CONFIDENCE`, new `Settings` fields -- thresholds aren't
+    specified in the docs, so these are a documented judgment call, tuned
+    for the fake providers). A resumed run can pause for clarification
+    again; there's no hard cap on rounds.
+  - `RunEventBus` (`events.py`): in-process, per-run buffered + live SSE
+    fan-out, so a client connecting after a run has already progressed
+    (or reconnecting by `run_id`, per docs/05) still replays every event
+    from the start; a subscriber stops on its own at a terminal status.
+    Single-process only, documented as such (README.md's Known
+    limitations) -- would need real pub/sub (Postgres `LISTEN`/`NOTIFY`
+    or Redis) behind more than one API worker.
+  - `runs.run` (`app/db/run_models.py`, migration `0003`): one JSONB-heavy
+    table per run rather than docs/06's fully normalized
+    `run`/`sql_attempt`/`validation`/`query_result`/`insight` entities --
+    a deliberate simplification (see the model's own docstring) since
+    nothing today needs to query attempts/checks/results across runs
+    relationally, and a run is always read/written as one snapshot.
+- **API** (`apps/api/app/api/runs.py`, `deps.py`): `POST /api/v1/runs`,
+  `GET /api/v1/runs`, `GET /api/v1/runs/{id}`,
+  `GET /api/v1/runs/{id}/events` (SSE), `POST /api/v1/runs/{id}/clarification`,
+  `POST /api/v1/runs/{id}/cancel` -- matching docs/06's Public API table
+  (`GET /runs` -- history -- is a small, justified addition the table
+  didn't enumerate). Only one demo tenant/source exists
+  (`default`/`marketplace_demo`, matching the seeded warehouse and
+  ingested catalog) -- no auth/multi-tenant phase exists in the roadmap.
+- **Demo LLM script** (`apps/api/app/llm/demo.py`): `LLM_PROVIDER=fake`
+  now pre-registers a real, working response for the one question
+  Phase 1's warehouse was deliberately seeded to answer (the
+  `ANOMALY_DEPARTMENT`/`ANOMALY_TASKTYPE`/`ANOMALY_SUBTYPE` hold-time
+  spike) -- without this, a bare `FakeLLMProvider()` has no rules
+  registered and every live run would fail NL2SQL generation
+  immediately, which would make README.md's "nothing requires a paid API
+  key" promise false for the one thing Phase 6 actually added (a live
+  HTTP path). The NL2SQL response reuses the exact query already proven
+  against the real warehouse in `test_validator_integration.py`; the
+  Insight response's claim states no specific hour figures on purpose --
+  the seeded anomaly is drawn from a uniform distribution per row, so a
+  hardcoded aggregate median would risk silently going stale.
+- **Frontend** (`apps/web/src/`): `/ask` (compose a question, sample
+  questions, live progress, clarification, KPIs, narrative with
+  click-to-highlight claims, result table, collapsible Evidence & SQL,
+  error state, run history) and `/runs/[id]` (reproduces the same view
+  for a past or in-progress run from history), built from the component
+  set docs/05 lists (`QuestionComposer`, `AgentProgress`,
+  `ClarificationCard`, `ValidationBadge`, `KpiGrid`, `ResultDataGrid`,
+  `InsightNarrative`, `EvidenceDrawer`, `SqlViewer`, `RunHistory`, plus a
+  shared `RunView` composing the state-dependent ones) and a `useRun`
+  hook driving the SSE lifecycle. `ActionDialog` and the `/catalog`,
+  `/actions`, `/settings` routes are deferred -- they depend on the
+  Action Agent (Phase 7) and aren't part of this phase's "Ask, progress,
+  clarification, answer, evidence, history, error" list.
+- **Shared contracts** (`packages/contracts/src/run.ts`): hand-maintained
+  TypeScript mirror of `RunSnapshot` and everything nested in it
+  (`NL2SQLOutput`, `ValidatorOutput`, `InsightOutput`, ...), field names
+  matching the API's JSON byte-for-byte (no camelCase conversion layer).
+  Consumed by `apps/web` as a real pnpm workspace package (`@bi-copilot/contracts`,
+  new repo-root `pnpm-workspace.yaml` + `package.json`; `apps/web`'s
+  `pnpm-lock.yaml` moved to the repo root, since a pnpm workspace has
+  exactly one lockfile) via Next.js `transpilePackages` -- no build step,
+  consumed directly as TypeScript source.
+- **Playwright E2E** (`tests/e2e/`, new workspace package): `ask-flow.spec.ts`
+  asks the seeded demo question end to end (progress -> validated answer
+  -> narrative -> Evidence & SQL -> history), checks an unscripted
+  question fails visibly rather than silently, and checks `/runs/[id]`
+  reproduces the same answer from history. Wired into CI as a new `e2e`
+  job: real `pgvector/pgvector:pg16` service, real migrate/seed/ingest,
+  real `uvicorn` + `next start`, then `playwright test` against both.
+- Tests: 44 new backend tests (222 total `apps/api` tests: 218 passed, 4
+  skipped -- the pre-existing self-skipping live-DB pattern, now also
+  covering `test_run_store_integration.py`), covering the event bus
+  (replay/live/termination), the orchestrator's full state sequence
+  (happy path, both clarification triggers, repair-then-pass,
+  repair-exhaustion, non-repairable failure, NL2SQL failure, Insight
+  failure, resuming a paused run), the API layer (status codes, error
+  mapping, background-task scheduling, SSE response shape) and the demo
+  LLM script (valid SQL, a grounded claim, graceful fallback for an
+  unscripted question). 25 new web tests (28 total `apps/web` tests),
+  covering the `useRun` hook's full lifecycle (via a fake `EventSource`)
+  and the key interactive components.
+
+**Known limitations:**
+
+- The Playwright suite could not be run against real servers in the
+  session that built this phase -- no Docker/Postgres in that
+  environment, the same constraint as every live-database test in this
+  project since Phase 1. `playwright test --list` verified the suite
+  parses; CI's `e2e` job runs it for real. The retrieval step in
+  particular (a real pgvector query against the real ingested catalog for
+  the demo question) is unverified beyond Phase 2's recall@5 benchmark
+  giving reasonable confidence it clears `RETRIEVAL_MIN_SCORE`.
+- The orchestrator's SSE buses and background-task registry are
+  process-local (see `app.orchestrator.events`'s docstring) -- a
+  single-API-worker assumption, fine for this project's MVP deployment
+  target but not multi-instance-safe as built.
+- `runs.run` is one JSONB-heavy table, not the fully normalized entities
+  docs/06 lists -- see `app/db/run_models.py`'s docstring for the
+  rationale and what would change if cross-run analytical queries ever
+  become a real requirement.
+- No auth or multi-tenant source selection exists (no phase in the
+  roadmap adds one yet), so `DEFAULT_TENANT_ID`/`DEFAULT_SOURCE_ID` are
+  hardcoded in `app.api.runs` and the Ask page has no source selector.
+- `StartRunRequest.timezone` is accepted (matching docs/06's contract)
+  but not yet applied anywhere -- no relative-date/timezone handling
+  exists in the NL2SQL agent yet (e.g. for "last quarter").
 
 ## Phase 7 — Action agent and Excel
 

@@ -45,6 +45,14 @@ class Settings(BaseSettings):
     QUERY_TIMEOUT_MS: int = 10_000
     QUERY_ROW_LIMIT: int = 5_000
 
+    # Orchestrator clarification thresholds (Phase 6+): below these, the
+    # run pauses at NEEDS_CLARIFICATION instead of guessing
+    # (docs/03_ARCHITECTURE.md: "retrieval below threshold: request
+    # clarification; do not guess"). Not otherwise specified in the docs;
+    # tuned for the fake providers' behavior, override per real provider.
+    RETRIEVAL_MIN_SCORE: float = 0.2
+    NL2SQL_MIN_CONFIDENCE: float = 0.4
+
     # Power BI adapter (Phase 8+). Must stay disabled by default.
     POWER_BI_ENABLED: bool = False
 

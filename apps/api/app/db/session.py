@@ -50,6 +50,16 @@ def get_engine() -> AsyncEngine:
     return engine
 
 
+@lru_cache
+def get_warehouse_engine() -> AsyncEngine:
+    """Return the process-wide async engine for WAREHOUSE_URL (the
+    bi_readonly role), created lazily. Only ever used to execute SQL that
+    has already passed app.validator.policy (see app.validator.executor) --
+    never for arbitrary queries."""
+    settings = get_settings()
+    return create_async_engine(settings.WAREHOUSE_URL, pool_pre_ping=True)
+
+
 async def ping_database(engine: AsyncEngine | None = None) -> None:
     """Raise if the application database cannot be reached."""
     active_engine = engine if engine is not None else get_engine()

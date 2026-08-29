@@ -17,9 +17,9 @@ Full product, architecture, security and roadmap specifications live in
 
 **Status:** Phase 0 (Foundation), Phase 1 (Synthetic marketplace-operations
 warehouse), Phase 2 (Semantic catalog and Schema Agent retrieval), Phase 3
-(NL2SQL agent), Phase 4 (Validator Agent and safe execution) and Phase 5
-(Insight generation) complete. See [docs/progress.md](docs/progress.md) for
-phase-by-phase status.
+(NL2SQL agent), Phase 4 (Validator Agent and safe execution), Phase 5
+(Insight generation) and Phase 6 (Frontend) complete. See
+[docs/progress.md](docs/progress.md) for phase-by-phase status.
 
 ## Prerequisites
 
@@ -75,12 +75,18 @@ In a second terminal:
 
 ```bash
 cd bi-copilot/apps/web
-pnpm install
+pnpm install   # installs the whole pnpm workspace (apps/*, packages/*, tests/e2e)
 pnpm dev   # http://localhost:3000
 ```
 
-Open http://localhost:3000 — the page shell shows a "Backend status" card
-that calls the API's `/health` and `/ready` endpoints.
+Open http://localhost:3000/ask to ask a question, or http://localhost:3000
+for the backend-status shell. With the default `LLM_PROVIDER=fake`, only
+one question is actually answerable end to end — *"Why did median task
+hold time spike for the Buyer department in Q2?"* (the first sample
+question on the Ask page) — since `app.llm.demo` only scripts that one
+canonical, deliberately-seeded scenario; any other question will complete
+the flow (progress, then a clear failure state) but won't produce a real
+answer without `LLM_PROVIDER=anthropic` and a real `ANTHROPIC_API_KEY`.
 
 ## Everyday commands
 
@@ -97,6 +103,7 @@ that calls the API's `/health` and `/ready` endpoints.
 | Run web tests                    | `apps/web`: `pnpm test`                                        |
 | Lint/format/type-check web        | `apps/web`: `pnpm lint` · `pnpm format` · `pnpm typecheck`      |
 | Production web build              | `apps/web`: `pnpm build`                                       |
+| Run the Playwright E2E suite (needs both servers running, see `tests/e2e/README.md`) | `tests/e2e`: `pnpm exec playwright install --with-deps chromium` (once) then `pnpm test` |
 | Stop the database                 | repo root: `docker compose down` (add `-v` to also wipe local data) |
 
 ## Verifying the backend directly
@@ -121,7 +128,10 @@ providers. Setting `LLM_PROVIDER=anthropic` (with a real `ANTHROPIC_API_KEY`)
 switches the NL2SQL agent to real, metered Claude API calls — this is
 opt-in and never free; see [docs/04_TRT.md](docs/04_TRT.md#cost-strategy).
 `POWER_BI_ENABLED` defaults to `false` and must stay that way outside an
-explicitly configured, licensed tenant (Phase 8).
+explicitly configured, licensed tenant (Phase 8). `RETRIEVAL_MIN_SCORE`
+and `NL2SQL_MIN_CONFIDENCE` control when a run pauses at
+`NEEDS_CLARIFICATION` instead of guessing (Phase 6's orchestrator,
+`app.orchestrator.service`).
 
 The API's typed `Settings` (`apps/api/app/config.py`) validates required
 variables at startup and fails fast — for example, it refuses to start with
@@ -133,28 +143,24 @@ variables at startup and fails fast — for example, it refuses to start with
 bi-copilot/
 ├── CLAUDE.md              Project instructions for Claude Code sessions
 ├── docker-compose.yml     PostgreSQL + pgvector (local dev)
+├── pnpm-workspace.yaml    pnpm workspace root (apps/*, packages/*, tests/e2e)
 ├── apps/
 │   ├── api/               FastAPI backend (Python 3.12, Pydantic v2, SQLAlchemy 2 async)
 │   └── web/                Next.js frontend (TypeScript strict, Tailwind CSS)
 ├── alembic.ini              Alembic entrypoint config (points at /migrations)
-├── packages/contracts/     Reserved for contracts shared with the frontend (from Phase 6)
+├── packages/contracts/     TypeScript mirrors of the backend's run/agent contracts (Phase 6+)
 ├── data/seed/               Synthetic marketplace-operations seed data + generator fixtures
 ├── data/glossary/            Semantic catalog source docs (tables/relationships/measures/terms/rules)
 ├── docs/                      Product, architecture, security, roadmap specs + ADRs
 ├── infra/                      Local/deployment infra config (DB init script, etc.)
-├── migrations/                  Alembic migration scripts (warehouse schema + catalog/pgvector)
-└── tests/                        Cross-app E2E suites (from Phase 6; backend integration tests live in apps/api/tests)
+├── migrations/                  Alembic migration scripts (warehouse schema + catalog/pgvector + runs)
+└── tests/e2e/                    Playwright E2E suite driving the real frontend + backend (Phase 6+)
 ```
 
 ## Known limitations
 
 - The API and web apps are not containerized — that's Phase 9 scope.
   `docker-compose.yml` currently runs only the database.
-- `packages/contracts` and the root `tests/` directory are still
-  placeholders (with READMEs explaining what arrives when) — each agent's
-  contracts live beside it (e.g. `apps/api/app/nl2sql/schema.py`) until a
-  contract genuinely needs to be shared with the TypeScript frontend too
-  (expected around Phase 6).
 - `EMBEDDING_PROVIDER` only supports `fake` so far (a deterministic
   feature-hashing embedding, not a stub — see
   `apps/api/app/embeddings/fake.py`); a real provider would be a later,
@@ -162,8 +168,29 @@ bi-copilot/
   the NL2SQL agent (Phase 3).
 - The warehouse schema targets PostgreSQL only, per the project's MVP
   constraint — no other SQL dialects are supported.
-- No orchestrator/API endpoint calls `app.pipeline.answer_question` from a
-  live HTTP request yet, and it isn't wired to the Schema Agent's real
-  retrieval (`retrieved_context` is still a caller-supplied list) — both
-  are the state-machine orchestrator's job once enough agents exist to
-  coordinate.
+- The orchestrator (`app.orchestrator`) is single-process: its SSE event
+  buses and background-task registry live in process memory
+  (`app.orchestrator.events`, `app.api.runs`), so it assumes exactly one
+  API worker. Moving to more than one would need a real pub/sub (e.g.
+  Postgres `LISTEN`/`NOTIFY` or Redis) in place of the in-memory bus —
+  fine for this project's single-instance MVP deployment (Phase 9), not
+  assumed silently.
+- A run's persisted state (`runs.run`) is one JSONB-heavy table rather
+  than docs/06_DATA_MODEL_API_CONTRACTS.md's fully normalized
+  `run`/`sql_attempt`/`validation`/`query_result`/`insight` entities — see
+  `apps/api/app/db/run_models.py`'s docstring for the rationale. Nothing
+  today needs to query attempts/checks/results across runs relationally.
+- Only one demo source/tenant exists (`marketplace_demo`/`default`, see
+  `app.api.runs`) — there's no auth or multi-tenant source selection yet
+  (no phase in the roadmap adds one), so the Ask page has no source
+  selector.
+- With the default `LLM_PROVIDER=fake`, only the one canonical seeded
+  question is actually answerable end to end (`apps/api/app/llm/demo.py`)
+  — any other question completes the flow but fails at NL2SQL generation,
+  by design (a bare `FakeLLMProvider` has no other scripted responses).
+- The Playwright E2E suite (`tests/e2e`) could not be run against real
+  servers in the session that built Phase 6 — no Docker/Postgres in that
+  environment, same constraint as every other live-database test in this
+  project. `playwright test --list` was used to verify the suite parses;
+  CI's `e2e` job runs it for real, end to end, against a real Postgres
+  service.

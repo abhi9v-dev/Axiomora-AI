@@ -1,0 +1,6 @@
+{
+  "name": "bi-copilot",
+  "private": true,
+  "version": "0.1.0",
+  "description": "NL-to-Insight BI Copilot monorepo root (pnpm workspace anchor; see apps/api and apps/web)."
+}

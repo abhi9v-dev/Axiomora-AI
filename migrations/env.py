@@ -23,6 +23,7 @@ sys.path.insert(0, str(API_DIR))
 
 import app.db.catalog_models  # noqa: E402, F401  (registers catalog.* tables on Base.metadata)
 import app.db.models  # noqa: E402, F401  (registers marketplace/organisation tables)
+import app.db.run_models  # noqa: E402, F401  (registers runs.* tables on Base.metadata)
 from app.config import Settings  # noqa: E402
 from app.db.base import Base  # noqa: E402
 
