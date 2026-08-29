@@ -1,7 +1,9 @@
 /** Typed HTTP + SSE client for the runs API (docs/06_DATA_MODEL_API_CONTRACTS.md). */
 import type {
   ActionRequest,
+  ActionType,
   ClarificationRequest,
+  PowerBiActionResponse,
   RunAcceptedResponse,
   RunSnapshot,
   RunSummary,
@@ -104,6 +106,26 @@ export function triggerBrowserDownload(blob: Blob, filename: string): void {
   link.click();
   document.body.removeChild(link);
   URL.revokeObjectURL(url);
+}
+
+/**
+ * Requests a Power BI action (`power_bi_push`/`power_bi_refresh`, Phase 8
+ * -- only available once the API's `POWER_BI_ENABLED` flag is set). Unlike
+ * `requestExcelExport`, the response body is a small JSON receipt, not a
+ * file -- there is nothing to download. A fresh idempotency key per call
+ * is correct for the same reason `requestExcelExport` uses one: each call
+ * is a new user-initiated request, not a retry of a prior one.
+ */
+export async function requestPowerBiAction(
+  baseUrl: string,
+  runId: string,
+  type: Extract<ActionType, "power_bi_push" | "power_bi_refresh">,
+): Promise<PowerBiActionResponse> {
+  const body: ActionRequest = { type, idempotency_key: crypto.randomUUID() };
+  return request(`${baseUrl}/api/v1/runs/${runId}/actions`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
 }
 
 /**

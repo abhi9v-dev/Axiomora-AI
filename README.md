@@ -131,10 +131,15 @@ providers. Setting `LLM_PROVIDER=anthropic` (with a real `ANTHROPIC_API_KEY`)
 switches the NL2SQL agent to real, metered Claude API calls — this is
 opt-in and never free; see [docs/04_TRT.md](docs/04_TRT.md#cost-strategy).
 `POWER_BI_ENABLED` defaults to `false` and must stay that way outside an
-explicitly configured, licensed tenant (Phase 8). `RETRIEVAL_MIN_SCORE`
-and `NL2SQL_MIN_CONFIDENCE` control when a run pauses at
-`NEEDS_CLARIFICATION` instead of guessing (Phase 6's orchestrator,
-`app.orchestrator.service`).
+explicitly configured, licensed tenant. `POWER_BI_ADAPTER` defaults to
+`mock` (a deterministic, zero-cost in-memory adapter — no tenant needed);
+set it to `rest` and provide `POWER_BI_TENANT_ID`/`POWER_BI_CLIENT_ID`/
+`POWER_BI_CLIENT_SECRET` for real, metered Power BI REST calls through a
+Microsoft Entra app registration (Phase 8; see
+[docs/09_DEPLOYMENT_OPERATIONS.md](docs/09_DEPLOYMENT_OPERATIONS.md#power-bi-reality-check)).
+`RETRIEVAL_MIN_SCORE` and `NL2SQL_MIN_CONFIDENCE` control when a run
+pauses at `NEEDS_CLARIFICATION` instead of guessing (Phase 6's
+orchestrator, `app.orchestrator.service`).
 
 The API's typed `Settings` (`apps/api/app/config.py`) validates required
 variables at startup and fails fast — for example, it refuses to start with
@@ -201,8 +206,10 @@ bi-copilot/
   there's no auth/user-identity system in this project (no phase in the
   roadmap adds one), so a real approver identity isn't available to
   record yet.
-- Excel export (`export_excel`) is the only implemented action —
-  everything Power BI (docs/07's action policy table: push rows, dataset
-  refresh, replace dataset/report) is feature-flagged/prohibited and
-  rejected with a clear "not available yet" reason until Phase 8; "save
-  shared Excel" stays disabled, as the policy table specifies for the MVP.
+- Excel export (`export_excel`) and the two feature-flagged Power BI
+  actions (`power_bi_push`, `power_bi_refresh`, behind `POWER_BI_ENABLED`)
+  are implemented; "replace dataset/report" stays permanently rejected and
+  "save shared Excel" stays disabled, exactly as docs/07's action policy
+  table specifies for the MVP. `POWER_BI_ADAPTER=rest` (real Power BI REST
+  calls) has never been exercised against a live tenant in this project —
+  only mocked, same posture as `LLM_PROVIDER=anthropic`'s Claude calls.

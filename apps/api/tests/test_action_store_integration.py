@@ -24,7 +24,12 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.action.schema import ActionRecord
-from app.action.store import get_action_by_idempotency_key, list_actions, record_action
+from app.action.store import (
+    get_action_by_idempotency_key,
+    list_actions,
+    record_action,
+    update_action_outcome,
+)
 from app.config import get_settings
 from app.orchestrator.schema import RunSnapshot
 from app.orchestrator.store import create_run
@@ -118,5 +123,29 @@ async def test_action_store_round_trip_and_unique_constraint() -> None:
         async with session_factory() as session:
             actions = await list_actions(session, run_snapshot.run_id)
         assert {action.idempotency_key for action in actions} == {"key-1", "key-2"}
+
+        # A retried Power BI action updates its existing row in place
+        # (app.api.actions's failed-then-retried path) rather than
+        # inserting a second one for the same idempotency key.
+        async with session_factory() as session:
+            updated = await update_action_outcome(
+                session, record.id, status="failed", rejection_reason="simulated adapter error"
+            )
+        assert updated.status == "failed"
+        assert updated.rejection_reason == "simulated adapter error"
+        async with session_factory() as session:
+            refetched = await get_action_by_idempotency_key(session, run_snapshot.run_id, "key-1")
+        assert refetched is not None
+        assert refetched.status == "failed"
+
+        async with session_factory() as session:
+            recovered = await update_action_outcome(
+                session, record.id, status="completed", rejection_reason="Pushed 3 rows"
+            )
+        assert recovered.status == "completed"
+
+        async with session_factory() as session:
+            actions_after_retry = await list_actions(session, run_snapshot.run_id)
+        assert len(actions_after_retry) == 2  # still key-1 and key-2 -- no new row was inserted
     finally:
         await engine.dispose()

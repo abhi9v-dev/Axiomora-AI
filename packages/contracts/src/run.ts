@@ -152,12 +152,24 @@ export function isTerminalStatus(status: RunStatus): boolean {
   return (TERMINAL_STATUSES as RunStatus[]).includes(status);
 }
 
-/** Only "export_excel" is implemented (Phase 7); the Power BI types exist
- * so the client can name a specific not-yet-available action rather than
- * only ever offering export -- see apps/api/app/action/schema.py. */
+/** "export_excel" downloads a workbook; "power_bi_push"/"power_bi_refresh"
+ * are available once the API's POWER_BI_ENABLED flag is set (Phase 8).
+ * "power_bi_replace" is always rejected -- see
+ * apps/api/app/action/schema.py and apps/api/app/action/policy.py. */
 export type ActionType = "export_excel" | "power_bi_push" | "power_bi_refresh" | "power_bi_replace";
 
 export interface ActionRequest {
   type: ActionType;
   idempotency_key: string;
+}
+
+/** JSON receipt body for a completed power_bi_* action (apps/api/app/api/
+ * actions.py's `_action_response`) -- export_excel returns the workbook's
+ * bytes directly instead, so this shape never applies to that type. */
+export interface PowerBiActionResponse {
+  action_id: string;
+  type: ActionType;
+  status: "completed";
+  destination: string;
+  detail: string | null;
 }

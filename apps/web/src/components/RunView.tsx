@@ -10,8 +10,8 @@ import { InsightNarrative } from "@/components/InsightNarrative";
 import { KpiGrid } from "@/components/KpiGrid";
 import { ResultDataGrid } from "@/components/ResultDataGrid";
 import { ValidationBadge } from "@/components/ValidationBadge";
-import { requestExcelExport, triggerBrowserDownload } from "@/lib/api";
-import { getApiBaseUrl } from "@/lib/env";
+import { requestExcelExport, requestPowerBiAction, triggerBrowserDownload } from "@/lib/api";
+import { getApiBaseUrl, isPowerBiEnabled } from "@/lib/env";
 
 interface Props {
   snapshot: RunSnapshot;
@@ -41,6 +41,12 @@ export function RunView({ snapshot, isSubmitting, onAnswerClarification, onCance
   const [isExportDialogOpen, setIsExportDialogOpen] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
+  const [powerBiAction, setPowerBiAction] = useState<"power_bi_push" | "power_bi_refresh" | null>(
+    null,
+  );
+  const [isPowerBiSubmitting, setIsPowerBiSubmitting] = useState(false);
+  const [powerBiError, setPowerBiError] = useState<string | null>(null);
+  const [powerBiSuccess, setPowerBiSuccess] = useState<string | null>(null);
   const latestAttempt = snapshot.attempts.at(-1) ?? null;
   const hasValidatedResult = latestAttempt?.validator.status === "pass";
 
@@ -55,6 +61,27 @@ export function RunView({ snapshot, isSubmitting, onAnswerClarification, onCance
       setExportError(err instanceof Error ? err.message : "Failed to export the workbook.");
     } finally {
       setIsExporting(false);
+    }
+  };
+
+  const openPowerBiDialog = (type: "power_bi_push" | "power_bi_refresh") => {
+    setPowerBiError(null);
+    setPowerBiSuccess(null);
+    setPowerBiAction(type);
+  };
+
+  const handlePowerBiConfirm = async () => {
+    if (!powerBiAction) return;
+    setIsPowerBiSubmitting(true);
+    setPowerBiError(null);
+    try {
+      const result = await requestPowerBiAction(baseUrl, snapshot.run_id, powerBiAction);
+      setPowerBiSuccess(result.detail ?? "The Power BI action completed.");
+      setPowerBiAction(null);
+    } catch (err) {
+      setPowerBiError(err instanceof Error ? err.message : "The Power BI action failed.");
+    } finally {
+      setIsPowerBiSubmitting(false);
     }
   };
 
@@ -105,17 +132,42 @@ export function RunView({ snapshot, isSubmitting, onAnswerClarification, onCance
         <>
           <div className="flex flex-wrap items-center justify-between gap-3">
             <ValidationBadge validator={latestAttempt?.validator} />
-            <button
-              type="button"
-              onClick={() => {
-                setExportError(null);
-                setIsExportDialogOpen(true);
-              }}
-              className="rounded-md border border-neutral-300 px-3 py-1.5 text-xs font-semibold text-neutral-700 hover:border-accent hover:text-accent"
-            >
-              Export Excel
-            </button>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setExportError(null);
+                  setIsExportDialogOpen(true);
+                }}
+                className="rounded-md border border-neutral-300 px-3 py-1.5 text-xs font-semibold text-neutral-700 hover:border-accent hover:text-accent"
+              >
+                Export Excel
+              </button>
+              {isPowerBiEnabled() ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => openPowerBiDialog("power_bi_push")}
+                    className="rounded-md border border-neutral-300 px-3 py-1.5 text-xs font-semibold text-neutral-700 hover:border-accent hover:text-accent"
+                  >
+                    Publish to Power BI
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => openPowerBiDialog("power_bi_refresh")}
+                    className="rounded-md border border-neutral-300 px-3 py-1.5 text-xs font-semibold text-neutral-700 hover:border-accent hover:text-accent"
+                  >
+                    Refresh Power BI Dataset
+                  </button>
+                </>
+              ) : null}
+            </div>
           </div>
+          {powerBiSuccess ? (
+            <p role="status" className="text-sm text-verified">
+              {powerBiSuccess}
+            </p>
+          ) : null}
           <KpiGrid result={latestAttempt?.validator.result} />
           <InsightNarrative
             insight={snapshot.insight}
@@ -140,6 +192,36 @@ export function RunView({ snapshot, isSubmitting, onAnswerClarification, onCance
           error={exportError}
           onConfirm={handleExportConfirm}
           onCancel={() => setIsExportDialogOpen(false)}
+        />
+      ) : null}
+
+      {powerBiAction === "power_bi_push" ? (
+        <ActionDialog
+          dataTimestamp={snapshot.completed_at}
+          title="Publish to Power BI"
+          destination="Power BI dataset (push rows)"
+          effect="Adds new rows to the configured Power BI dataset table; does not remove or overwrite existing rows."
+          confirmLabel="Publish"
+          submittingLabel="Publishing…"
+          isSubmitting={isPowerBiSubmitting}
+          error={powerBiError}
+          onConfirm={handlePowerBiConfirm}
+          onCancel={() => setPowerBiAction(null)}
+        />
+      ) : null}
+
+      {powerBiAction === "power_bi_refresh" ? (
+        <ActionDialog
+          dataTimestamp={snapshot.completed_at}
+          title="Refresh Power BI dataset"
+          destination="Power BI dataset refresh"
+          effect="Triggers Power BI to reload the dataset from its configured source; this may replace previously loaded data in Power BI (not in the warehouse)."
+          confirmLabel="Refresh"
+          submittingLabel="Refreshing…"
+          isSubmitting={isPowerBiSubmitting}
+          error={powerBiError}
+          onConfirm={handlePowerBiConfirm}
+          onCancel={() => setPowerBiAction(null)}
         />
       ) : null}
     </div>

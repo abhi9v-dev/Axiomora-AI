@@ -11,6 +11,8 @@ from collections.abc import AsyncIterator
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.action.power_bi.base import PowerBIAdapter
+from app.action.power_bi.factory import get_power_bi_adapter
 from app.config import Settings, get_settings
 from app.db.session import get_engine
 from app.embeddings.base import EmbeddingProvider
@@ -36,6 +38,10 @@ def get_llm_provider_dep() -> LLMProvider:
 
 def get_embedding_provider_dep() -> EmbeddingProvider:
     return get_embedding_provider(get_settings())
+
+
+def get_power_bi_adapter_dep() -> PowerBIAdapter:
+    return get_power_bi_adapter(get_settings())
 
 
 def get_orchestrator_params() -> OrchestratorParams:

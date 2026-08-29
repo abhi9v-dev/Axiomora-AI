@@ -58,6 +58,26 @@ async def record_action(
     return record
 
 
+async def update_action_outcome(
+    session: AsyncSession,
+    action_id: uuid.UUID,
+    *,
+    status: str,
+    rejection_reason: str | None,
+) -> ActionRecord:
+    """Updates an existing action row in place after re-attempting a
+    previously "failed" one (see app.action.schema.ActionStatus's
+    docstring on why "failed" -- unlike "completed"/"rejected" -- is
+    retried rather than replayed). No new row is inserted, so the
+    (run_id, idempotency_key) unique constraint is never touched."""
+    row = await session.get(Action, action_id)
+    assert row is not None, f"action {action_id} must already exist to update its outcome"
+    row.status = status
+    row.rejection_reason = rejection_reason
+    await session.commit()
+    return _to_record(row)
+
+
 async def list_actions(session: AsyncSession, run_id: uuid.UUID) -> list[ActionRecord]:
     rows = (
         await session.scalars(

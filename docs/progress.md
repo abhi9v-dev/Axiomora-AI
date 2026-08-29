@@ -628,7 +628,142 @@ were needed.
 
 ## Phase 8 — Power BI adapter
 
-**Status: Not started.**
+**Status: Complete** (2026-08-30)
+
+- **`PowerBIAdapter` interface** (`apps/api/app/action/power_bi/base.py`,
+  `push_rows`/`refresh_dataset`, ADR 0002's provider-interface pattern --
+  the same shape as `LLMProvider`/`EmbeddingProvider`) plus two
+  implementations:
+  - `MockPowerBIAdapter` (`mock.py`): deterministic, zero-cost, always
+    succeeds, records every call in-memory -- the "mock adapter"
+    docs/10_IMPLEMENTATION_ROADMAP.md's Phase 8 entry calls for, and what
+    `POWER_BI_ADAPTER=mock` (the default) selects for CI and local demos.
+  - `PowerBIRestAdapter` (`rest.py`): real Microsoft Entra client-
+    credentials OAuth2 + Power BI REST calls (`.../datasets/{id}/tables/
+    {table}/rows`, `.../datasets/{id}/refreshes`) via `httpx2` (this
+    project's installed HTTP client, the same one the `anthropic` SDK
+    already depends on transitively), with a cached bearer token and
+    exception translation into one stable `PowerBIAdapterError` -- verified
+    with 10 tests that mock only `httpx2.AsyncClient.post`, never a real
+    network call, tenant or cost, mirroring `AnthropicLLMProvider`'s
+    verification style from Phase 3.
+  - `get_power_bi_adapter(settings)` factory (`factory.py`), wired into
+    FastAPI via `get_power_bi_adapter_dep` (`app/api/deps.py`).
+- **Settings** (`app/config.py`): `POWER_BI_ADAPTER` (`mock`/`rest`,
+  default `mock`), `POWER_BI_WORKSPACE_ID`/`POWER_BI_DATASET_ID`/
+  `POWER_BI_TABLE_NAME` (placeholder defaults, so `POWER_BI_ENABLED=true`
+  with the mock adapter needs zero extra configuration), and
+  `POWER_BI_TENANT_ID`/`POWER_BI_CLIENT_ID`/`POWER_BI_CLIENT_SECRET`
+  (`None` by default, required together when `POWER_BI_ADAPTER=rest` --
+  validated at startup exactly like `ANTHROPIC_API_KEY`'s requirement for
+  `LLM_PROVIDER=anthropic`, plus the same defense-in-depth re-check in the
+  factory). `POWER_BI_ENABLED` (added in Phase 0, unused until now) stays
+  `false` by default and is the master switch app.action.policy checks --
+  `POWER_BI_ADAPTER` only matters once it is `true`.
+- **Policy** (`app/action/policy.py`): `power_bi_push`/`power_bi_refresh`
+  join `export_excel` in the allowed set once `POWER_BI_ENABLED=true`
+  (still gated by the existing `READY` + passing-validated-result checks);
+  disabled gives a specific "the Power BI adapter is disabled" reason
+  rather than the old, now-inaccurate "not available yet". `power_bi_replace`
+  (docs/07_SECURITY_GOVERNANCE.md's table: "replace dataset/report --
+  Prohibited in MVP") is rejected unconditionally, flag or no flag -- no
+  adapter method, execution path or feature flag exists for it at all,
+  matching the table's "Not available" rather than "Feature flagged".
+  Power BI approvals use a documented `"analyst"` placeholder identity
+  (docs/07: "Analyst confirmation"/"Analyst/admin confirmation"), distinct
+  from Excel's existing `"result_owner"` -- same no-real-auth caveat as
+  Phase 7's placeholder.
+- **Action execution and failure handling** (`app/api/actions.py`): the
+  idempotency row is now inserted *before* the action actually executes
+  (optimistically `"completed"`, corrected afterward on failure) --
+  whichever concurrent request wins the database's unique-constraint race
+  is the only one that ever calls the adapter or builds a workbook; the
+  loser replays the winner's outcome. This closes a real duplicate-side-
+  effect risk that did not exist for Excel (pure, safe to compute
+  redundantly) but does for Power BI: pushing rows or triggering a refresh
+  is a genuine external effect. A new `"failed"` `ActionStatus`
+  (`app/action/schema.py`) is distinct from `"rejected"`: rejection is a
+  stable policy decision (a repeat always returns the same 403); a failure
+  is an adapter error after policy already approved the request, so
+  docs/03_ARCHITECTURE.md's failure-handling rule -- "action failure:
+  retain validated answer and an idempotency key for safe retry" -- means
+  a repeat with the same key re-attempts execution instead of replaying a
+  cached failure (`app/action/store.py`'s new `update_action_outcome`
+  updates the existing row in place; no new row, no migration needed, the
+  unique constraint is never touched by a retry). A successful
+  `power_bi_push`/`power_bi_refresh` returns a small JSON receipt
+  (`action_id`, `type`, `status`, `destination`, `detail`) instead of a
+  file, reusing the `rejection_reason` column to also hold that receipt
+  text (or the adapter's error message on failure) so an idempotent replay
+  never needs to call the adapter again. `power_bi_push`'s rows are the
+  latest attempt's validated result table, matching Excel's "Data" sheet;
+  `power_bi_refresh` needs no rows, only the configured dataset ID.
+- **Frontend**: `ActionDialog` (`apps/web/src/components/ActionDialog.tsx`)
+  gained optional `title`/`destination`/`effect`/`confirmLabel`/
+  `submittingLabel` props with Excel-matching defaults, so it is reused
+  unchanged for both new flows rather than forked. `RunView` gained two
+  buttons -- "Publish to Power BI" and "Refresh Power BI Dataset" -- shown
+  only when a new build-time `NEXT_PUBLIC_POWER_BI_ENABLED` flag is set
+  (docs/05_FRONTEND_UX.md: "Publish to Power BI when enabled"); the API
+  still enforces `POWER_BI_ENABLED` server-side regardless of what the UI
+  offers. A successful action shows the returned receipt as a `role="status"`
+  banner (docs/05's palette: green reserved for verified status) rather
+  than triggering a download, since there is no file. `packages/contracts`
+  gained `PowerBiActionResponse`; `lib/api.ts` gained
+  `requestPowerBiAction`; `lib/env.ts` gained `isPowerBiEnabled()`.
+- Tests: 31 new backend tests (275 total `apps/api` tests: 270 passed, 5
+  skipped -- the same self-skipping live-DB pattern as every prior phase,
+  now also covering `update_action_outcome` in
+  `test_action_store_integration.py`), covering the mock adapter, the REST
+  adapter (success, token caching, four distinct error-translation paths),
+  the factory (both adapters, plus the defense-in-depth credential
+  re-check via `Settings.model_construct` to bypass the startup
+  validator), the config validator (accepts mock without credentials,
+  rejects rest without all three, accepts rest with all three), the policy
+  (disabled/enabled/prohibited/not-ready, for both new action types), and
+  the API layer end to end (push succeeds and calls the mock adapter with
+  the right dataset/table/rows, refresh succeeds, a completed action
+  replays without calling the adapter again, a failed action returns 502
+  and a same-key retry can then succeed and updates the same row rather
+  than inserting a second one, `power_bi_replace` stays rejected even with
+  the flag on). 4 new frontend tests (40 total `apps/web` tests) covering
+  the new `RunView` flows (hidden behind the flag, publish success shows
+  the receipt, refresh success, and a failure keeps the dialog open with
+  the error shown) -- `ActionDialog`'s existing 4 tests already cover its
+  generalized defaults unchanged, since every new prop is optional.
+- Ruff, Black, mypy (strict, `app` and `tests`), ESLint, Prettier,
+  `tsc --noEmit` and `next build` all clean. Verified with a real
+  `uvicorn` boot (no database needed for this) that the new dependency
+  wiring doesn't break app startup and that `/api/v1/runs/{run_id}/actions`
+  advertises all four `ActionType` values in its generated OpenAPI schema.
+
+**Known limitations:**
+
+- No live Power BI tenant was exercised in this session (by design --
+  `POWER_BI_ENABLED` defaults `false` and `POWER_BI_ADAPTER` defaults
+  `mock`, same "verified via mocking, not a real call" posture as Phase
+  3's `AnthropicLLMProvider`). `PowerBIRestAdapter`'s request construction
+  and error handling are verified against `httpx2`'s real types; a live
+  call requires a Microsoft Entra app registration, workspace and
+  licensing this project does not have (docs/09_DEPLOYMENT_OPERATIONS.md's
+  "Power BI reality check") -- exactly what the roadmap's Phase 8 exit
+  criterion anticipates ("real integration only after tenant setup").
+- No Playwright scenario was added for the Power BI buttons -- CI's `e2e`
+  job doesn't set `POWER_BI_ENABLED`/`NEXT_PUBLIC_POWER_BI_ENABLED`, and
+  the roadmap's stated exit bar is "mock tests pass," not an E2E run;
+  the flow is covered by the Vitest suite instead (same reasoning that
+  scoped Phase 7's E2E addition to one new scenario, not full coverage).
+- The insert-before-execute ordering closes the duplicate-side-effect race
+  between two *new* concurrent requests sharing an idempotency key, but
+  not between two concurrent *retries* of the same already-`"failed"` row
+  (no `SELECT ... FOR UPDATE` or equivalent row locking exists anywhere in
+  this codebase yet) -- a narrower, self-inflicted scenario (retrying the
+  same failed action from two tabs at once) that was judged out of scope
+  for this phase's exit bar.
+- `runs.action`'s `approved_by` for a Power BI action is a fixed
+  `"analyst"` placeholder, same no-real-auth caveat already documented for
+  Excel's `"result_owner"` in Phase 7 -- no phase in the roadmap adds a
+  real identity/approval system.
 
 ## Phase 9 — Deployment and portfolio polish
 

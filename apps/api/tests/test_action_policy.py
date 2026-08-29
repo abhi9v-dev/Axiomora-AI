@@ -65,15 +65,57 @@ def test_ready_run_with_a_passing_result_is_allowed() -> None:
     assert result.reason is None
 
 
-def test_a_power_bi_action_is_rejected_as_not_available_yet() -> None:
+def test_a_power_bi_action_is_rejected_when_the_flag_is_disabled() -> None:
     snapshot = _snapshot(
         attempts=[AttemptRecord(attempt_no=1, nl2sql=_nl2sql(), validator=_passing_validator())]
     )
 
-    result = evaluate_action_policy(snapshot, "power_bi_push")
+    result = evaluate_action_policy(snapshot, "power_bi_push", power_bi_enabled=False)
 
     assert not result.ok
-    assert result.reason is not None and "not available yet" in result.reason
+    assert result.reason is not None and "disabled" in result.reason
+
+
+def test_a_power_bi_push_is_allowed_once_the_flag_is_enabled() -> None:
+    snapshot = _snapshot(
+        attempts=[AttemptRecord(attempt_no=1, nl2sql=_nl2sql(), validator=_passing_validator())]
+    )
+
+    result = evaluate_action_policy(snapshot, "power_bi_push", power_bi_enabled=True)
+
+    assert result.ok
+    assert result.destination == "power_bi:push"
+
+
+def test_a_power_bi_refresh_is_allowed_once_the_flag_is_enabled() -> None:
+    snapshot = _snapshot(
+        attempts=[AttemptRecord(attempt_no=1, nl2sql=_nl2sql(), validator=_passing_validator())]
+    )
+
+    result = evaluate_action_policy(snapshot, "power_bi_refresh", power_bi_enabled=True)
+
+    assert result.ok
+    assert result.destination == "power_bi:refresh"
+
+
+def test_power_bi_replace_is_always_rejected_even_with_the_flag_enabled() -> None:
+    snapshot = _snapshot(
+        attempts=[AttemptRecord(attempt_no=1, nl2sql=_nl2sql(), validator=_passing_validator())]
+    )
+
+    result = evaluate_action_policy(snapshot, "power_bi_replace", power_bi_enabled=True)
+
+    assert not result.ok
+    assert result.reason is not None and "prohibited" in result.reason
+
+
+def test_power_bi_push_still_requires_a_ready_validated_run_when_flag_enabled() -> None:
+    snapshot = _snapshot(status="GENERATING_SQL", attempts=[])
+
+    result = evaluate_action_policy(snapshot, "power_bi_push", power_bi_enabled=True)
+
+    assert not result.ok
+    assert result.reason is not None and "GENERATING_SQL" in result.reason
 
 
 def test_a_run_still_in_progress_is_rejected() -> None:

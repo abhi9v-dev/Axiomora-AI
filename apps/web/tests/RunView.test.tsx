@@ -130,3 +130,102 @@ describe("RunView export action", () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 });
+
+describe("RunView Power BI actions", () => {
+  beforeEach(() => {
+    vi.stubGlobal("fetch", vi.fn());
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+  });
+
+  it("does not show the Power BI buttons when the feature flag is off", () => {
+    render(
+      <RunView snapshot={readySnapshot()} onAnswerClarification={vi.fn()} onCancel={vi.fn()} />,
+    );
+
+    expect(screen.queryByRole("button", { name: "Publish to Power BI" })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Refresh Power BI Dataset" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("publishes rows to Power BI and shows the returned receipt", async () => {
+    vi.stubEnv("NEXT_PUBLIC_POWER_BI_ENABLED", "true");
+    const user = userEvent.setup();
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          action_id: "a1",
+          type: "power_bi_push",
+          status: "completed",
+          destination: "power_bi:push",
+          detail: "Pushed 1 row(s) to Power BI dataset 'demo-dataset', table 'BiCopilotInsights'.",
+        }),
+        { status: 200 },
+      ),
+    );
+
+    render(
+      <RunView snapshot={readySnapshot()} onAnswerClarification={vi.fn()} onCancel={vi.fn()} />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Publish to Power BI" }));
+    await user.click(screen.getByRole("button", { name: "Publish" }));
+
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(screen.getByRole("status")).toHaveTextContent("Pushed 1 row(s)");
+    const [, init] = vi.mocked(fetch).mock.calls[0] as [string, RequestInit];
+    const body = JSON.parse(init.body as string) as { type: string };
+    expect(body.type).toBe("power_bi_push");
+  });
+
+  it("triggers a Power BI dataset refresh", async () => {
+    vi.stubEnv("NEXT_PUBLIC_POWER_BI_ENABLED", "true");
+    const user = userEvent.setup();
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          action_id: "a2",
+          type: "power_bi_refresh",
+          status: "completed",
+          destination: "power_bi:refresh",
+          detail: "Triggered a refresh of Power BI dataset 'demo-dataset' (refresh id r-1).",
+        }),
+        { status: 200 },
+      ),
+    );
+
+    render(
+      <RunView snapshot={readySnapshot()} onAnswerClarification={vi.fn()} onCancel={vi.fn()} />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Refresh Power BI Dataset" }));
+    await user.click(screen.getByRole("button", { name: "Refresh" }));
+
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(screen.getByRole("status")).toHaveTextContent("Triggered a refresh");
+  });
+
+  it("keeps the dialog open and shows an error when a Power BI action fails", async () => {
+    vi.stubEnv("NEXT_PUBLIC_POWER_BI_ENABLED", "true");
+    const user = userEvent.setup();
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response(JSON.stringify({ detail: "Power BI API request failed" }), { status: 502 }),
+    );
+
+    render(
+      <RunView snapshot={readySnapshot()} onAnswerClarification={vi.fn()} onCancel={vi.fn()} />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Publish to Power BI" }));
+    await user.click(screen.getByRole("button", { name: "Publish" }));
+
+    await waitFor(() =>
+      expect(screen.getByRole("alert")).toHaveTextContent("Power BI API request failed"),
+    );
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+  });
+});

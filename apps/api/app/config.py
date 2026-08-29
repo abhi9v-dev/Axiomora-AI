@@ -53,8 +53,20 @@ class Settings(BaseSettings):
     RETRIEVAL_MIN_SCORE: float = 0.2
     NL2SQL_MIN_CONFIDENCE: float = 0.4
 
-    # Power BI adapter (Phase 8+). Must stay disabled by default.
+    # Power BI adapter (Phase 8+). Must stay disabled by default -- when
+    # False, app.action.policy never allows a power_bi_* action regardless
+    # of POWER_BI_ADAPTER. "mock" (the default) needs no real tenant and is
+    # what CI/local demos exercise; "rest" makes real, metered Power BI REST
+    # calls and requires a Microsoft Entra app registration
+    # (docs/09_DEPLOYMENT_OPERATIONS.md's "Power BI reality check").
     POWER_BI_ENABLED: bool = False
+    POWER_BI_ADAPTER: Literal["mock", "rest"] = "mock"
+    POWER_BI_WORKSPACE_ID: str = "demo-workspace"
+    POWER_BI_DATASET_ID: str = "demo-dataset"
+    POWER_BI_TABLE_NAME: str = "BiCopilotInsights"
+    POWER_BI_TENANT_ID: str | None = None
+    POWER_BI_CLIENT_ID: str | None = None
+    POWER_BI_CLIENT_SECRET: str | None = None
 
     # API service.
     API_HOST: str = "0.0.0.0"
@@ -67,6 +79,18 @@ class Settings(BaseSettings):
             raise ValueError(
                 "ANTHROPIC_API_KEY is required when LLM_PROVIDER=anthropic. "
                 "Use LLM_PROVIDER=fake for local development without a key."
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _validate_power_bi_adapter_requirements(self) -> Settings:
+        if self.POWER_BI_ADAPTER == "rest" and not (
+            self.POWER_BI_TENANT_ID and self.POWER_BI_CLIENT_ID and self.POWER_BI_CLIENT_SECRET
+        ):
+            raise ValueError(
+                "POWER_BI_TENANT_ID, POWER_BI_CLIENT_ID and POWER_BI_CLIENT_SECRET are all "
+                "required when POWER_BI_ADAPTER=rest. Use POWER_BI_ADAPTER=mock for local "
+                "development and demos without a Microsoft Entra app registration."
             )
         return self
 

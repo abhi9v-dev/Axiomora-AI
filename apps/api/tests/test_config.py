@@ -61,6 +61,52 @@ def test_fake_provider_does_not_require_api_key() -> None:
     assert settings.ANTHROPIC_API_KEY is None
 
 
+def test_power_bi_defaults_to_the_mock_adapter_disabled() -> None:
+    settings = Settings(
+        _env_file=None,
+        DATABASE_URL="postgresql+asyncpg://u:p@localhost:5432/app",
+        WAREHOUSE_URL="postgresql+asyncpg://u:p@localhost:5432/wh",
+    )
+
+    assert settings.POWER_BI_ENABLED is False
+    assert settings.POWER_BI_ADAPTER == "mock"
+
+
+def test_rest_power_bi_adapter_requires_entra_credentials() -> None:
+    with pytest.raises(ValidationError, match="POWER_BI_TENANT_ID"):
+        Settings(
+            _env_file=None,
+            DATABASE_URL="postgresql+asyncpg://u:p@localhost:5432/app",
+            WAREHOUSE_URL="postgresql+asyncpg://u:p@localhost:5432/wh",
+            POWER_BI_ADAPTER="rest",
+        )
+
+
+def test_rest_power_bi_adapter_with_all_credentials_is_accepted() -> None:
+    settings = Settings(
+        _env_file=None,
+        DATABASE_URL="postgresql+asyncpg://u:p@localhost:5432/app",
+        WAREHOUSE_URL="postgresql+asyncpg://u:p@localhost:5432/wh",
+        POWER_BI_ADAPTER="rest",
+        POWER_BI_TENANT_ID="tenant-1",
+        POWER_BI_CLIENT_ID="client-1",
+        POWER_BI_CLIENT_SECRET="secret-1",
+    )
+
+    assert settings.POWER_BI_ADAPTER == "rest"
+
+
+def test_mock_power_bi_adapter_does_not_require_entra_credentials() -> None:
+    settings = Settings(
+        _env_file=None,
+        DATABASE_URL="postgresql+asyncpg://u:p@localhost:5432/app",
+        WAREHOUSE_URL="postgresql+asyncpg://u:p@localhost:5432/wh",
+        POWER_BI_ADAPTER="mock",
+    )
+
+    assert settings.POWER_BI_TENANT_ID is None
+
+
 def test_cors_origins_parses_comma_separated_list() -> None:
     settings = Settings(
         _env_file=None,

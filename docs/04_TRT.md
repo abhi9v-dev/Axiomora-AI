@@ -37,6 +37,13 @@ MAX_SQL_REPAIRS=2
 QUERY_TIMEOUT_MS=10000
 QUERY_ROW_LIMIT=5000
 POWER_BI_ENABLED=false
+POWER_BI_ADAPTER=mock
+POWER_BI_WORKSPACE_ID=demo-workspace
+POWER_BI_DATASET_ID=demo-dataset
+POWER_BI_TABLE_NAME=BiCopilotInsights
+POWER_BI_TENANT_ID=
+POWER_BI_CLIENT_ID=
+POWER_BI_CLIENT_SECRET=
 ```
 
 Never commit real secret values. `.env.example` (repo root) documents every

@@ -1,5 +1,10 @@
 interface Props {
   dataTimestamp: string | null;
+  title?: string;
+  destination?: string;
+  effect?: string;
+  confirmLabel?: string;
+  submittingLabel?: string;
   isSubmitting?: boolean;
   error?: string | null;
   onConfirm: () => void;
@@ -8,11 +13,23 @@ interface Props {
 
 /** docs/07_SECURITY_GOVERNANCE.md: "the confirmation dialog must identify
  * destination, effect, data timestamp and whether existing content
- * changes." Excel export needs no destination-specific approval beyond
- * this click (docs/07's action policy table: "Download Excel -- Allowed
- * for result owner -- User click") -- Power BI actions (Phase 8) will
- * reuse this same shape with their own destination-specific copy. */
-export function ActionDialog({ dataTimestamp, isSubmitting, error, onConfirm, onCancel }: Props) {
+ * changes." Defaults match Excel export's copy (docs/07's action policy
+ * table: "Download Excel -- Allowed for result owner -- User click"),
+ * which needs no destination-specific approval beyond this click; the
+ * Power BI actions (Phase 8) pass their own title/destination/effect/
+ * confirmLabel instead, reusing this same shape. */
+export function ActionDialog({
+  dataTimestamp,
+  title = "Export to Excel",
+  destination = "Download to your device",
+  effect = "Creates a new file; nothing existing is changed or overwritten.",
+  confirmLabel = "Download",
+  submittingLabel = "Exporting…",
+  isSubmitting,
+  error,
+  onConfirm,
+  onCancel,
+}: Props) {
   return (
     <div
       role="dialog"
@@ -22,16 +39,16 @@ export function ActionDialog({ dataTimestamp, isSubmitting, error, onConfirm, on
     >
       <div className="w-full max-w-sm rounded-lg bg-white p-5 shadow-lg">
         <h2 id="action-dialog-title" className="text-base font-semibold text-neutral-900">
-          Export to Excel
+          {title}
         </h2>
         <dl className="mt-3 space-y-2 text-sm text-neutral-600">
           <div>
             <dt className="font-medium text-neutral-700">Destination</dt>
-            <dd>Download to your device</dd>
+            <dd>{destination}</dd>
           </div>
           <div>
             <dt className="font-medium text-neutral-700">Effect</dt>
-            <dd>Creates a new file; nothing existing is changed or overwritten.</dd>
+            <dd>{effect}</dd>
           </div>
           <div>
             <dt className="font-medium text-neutral-700">Data as of</dt>
@@ -59,7 +76,7 @@ export function ActionDialog({ dataTimestamp, isSubmitting, error, onConfirm, on
             disabled={isSubmitting}
             className="rounded-md bg-accent px-3 py-1.5 text-sm font-semibold text-accent-foreground disabled:opacity-50"
           >
-            {isSubmitting ? "Exporting…" : "Download"}
+            {isSubmitting ? submittingLabel : confirmLabel}
           </button>
         </div>
       </div>
