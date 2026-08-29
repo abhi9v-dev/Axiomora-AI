@@ -321,7 +321,88 @@ were needed.
 
 ## Phase 5 — Insight generation
 
-**Status: Not started.**
+**Status: Complete** (2026-08-29)
+
+- `InsightOutput` contract (`apps/api/app/insight/schema.py`): `headline`,
+  `narrative`, `claims` (each a `text` + `evidence` list of cell IDs) and an
+  optional `chart` suggestion -- matches docs/06's Insight output example
+  exactly.
+- Compact result serialization and evidence cell IDs
+  (`app/insight/serialization.py`): `cell_id(row, col)` /
+  `result:r{row}:c{col}` (1-indexed); `serialize_result` renders a
+  `QueryResult` into a compact, cell-ID-annotated block for the prompt;
+  `resolve_cell` resolves a cell ID back to its actual value (raising
+  `CellReferenceError` on a malformed or out-of-range reference -- i.e. a
+  hallucinated citation), so verification never has to trust a citation's
+  validity on the model's word.
+- Claim-verification pass (`app/insight/verification.py`,
+  `verify_claims`): every number found in a claim's `text` must resolve
+  from that same claim's own `evidence` cells (CLAUDE.md: "numeric
+  narrative claims require result-cell evidence references"); a numeric
+  claim with no evidence, or an evidence reference that doesn't resolve, is
+  a violation. Deliberately scoped to `claims` rather than the free-form
+  `headline`/`narrative` prose, since docs/06's own canonical example
+  headline ("increased 18 hours") is a rounded delta of the claim's exact
+  9.5/27.4 figures, not a literal cell value -- the `claims` array is the
+  structured, directly-checkable evidence-binding mechanism; prose is free
+  to summarize it. `extract_numbers` uses a lookbehind/lookahead-guarded
+  regex so digits embedded in a token (e.g. the "2" in "Q2") are never
+  misread as a number.
+- Insight Agent (`app/insight/agent.py`, `generate_insight`): an empty
+  result (`row_count == 0`) short-circuits to a deterministic "no data"
+  `InsightOutput` with **no LLM call at all** (docs/08's AT-05: "explain no
+  data; do not invent insight" -- decided in Python, not trusted to the
+  model). Otherwise, one corrective retry (shared budget) covers both a
+  malformed/schema-invalid response and a response that fails claim
+  verification, with the specific violations fed back in the correction
+  prompt; a second failure raises `InsightGenerationError` rather than
+  returning anything ungrounded (docs/08's AT-06).
+- Prompts (`app/insight/prompts.py`): same untrusted-data delimiting
+  pattern as NL2SQL's -- the serialized result and the user's question are
+  wrapped in labeled, delimited blocks; the system prompt explicitly
+  instructs the model to treat their contents as data, never instructions.
+- Wired into `app.pipeline.answer_question`: `PipelineResult` gained
+  `insight_output`/`insight_error`. A passing validator result triggers
+  Insight generation with the validated `QueryResult`; a failing validator
+  result (terminal or repairs exhausted) never does (CLAUDE.md: "failed
+  validation blocks the Insight Agent") and both fields stay `None`. An
+  `InsightGenerationError` is caught into `insight_error` rather than
+  raised, so a narrative-generation failure never discards an
+  already-validated SQL result (docs/03's failure handling: "model outage:
+  preserve run state and allow retry").
+- Tests (26 new, 175 total apps/api tests, all passing without a database
+  or network call): serialization (cell ID round-tripping, malformed/
+  out-of-range references, empty-result rendering), verification
+  (grounded claims pass; unevidenced numbers, mismatched numbers, dangling
+  references and non-numeric claims are each independently exercised;
+  digit-in-token false positives like "Q2" are excluded), prompt-injection
+  delimiting (mirroring test_nl2sql_prompts.py), the agent's happy path,
+  malformed-JSON-then-retry, ungrounded-claim-then-retry, both-attempts-
+  fail, and empty-result-skips-the-LLM paths, and pipeline-wiring tests
+  (validator pass calls Insight with the right question/result; terminal
+  failure and repair-exhaustion never call it; an Insight failure is
+  captured without raising `PipelineError` or losing the validated result).
+
+**Known limitations:**
+
+- The Insight Agent has never been exercised against the real Claude API,
+  same as Phase 3's NL2SQL agent -- `LLM_PROVIDER` defaults to `fake`, and
+  no key was used in this session. `AnthropicLLMProvider` (already built
+  and tested in Phase 3) is reused unchanged; nothing Insight-specific
+  needed adding to it, since the provider interface is response-format
+  agnostic.
+- Claim verification is deliberately exact-value matching only (with a
+  small floating-point tolerance) -- it does not parse or check derived
+  arithmetic (sums, percentage changes, deltas) that a claim's text might
+  state. This is an intentional scope boundary matching docs/06's own
+  example (the claim states the two raw figures verbatim; only the
+  free-form headline states the rounded delta), not a gap: teaching a
+  claim to state raw grounded figures is the safer, simpler contract to
+  enforce than parsing arbitrary arithmetic expressions out of prose.
+- No orchestrator/API endpoint calls `app.pipeline.answer_question` from a
+  live HTTP request yet, and it still isn't wired to the Schema Agent's
+  real retrieval -- both remain the state-machine orchestrator's job
+  (Phase 6).
 
 ## Phase 6 — Frontend
 

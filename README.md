@@ -17,8 +17,9 @@ Full product, architecture, security and roadmap specifications live in
 
 **Status:** Phase 0 (Foundation), Phase 1 (Synthetic marketplace-operations
 warehouse), Phase 2 (Semantic catalog and Schema Agent retrieval), Phase 3
-(NL2SQL agent) and Phase 4 (Validator Agent and safe execution) complete.
-See [docs/progress.md](docs/progress.md) for phase-by-phase status.
+(NL2SQL agent), Phase 4 (Validator Agent and safe execution) and Phase 5
+(Insight generation) complete. See [docs/progress.md](docs/progress.md) for
+phase-by-phase status.
 
 ## Prerequisites
 

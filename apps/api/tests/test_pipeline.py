@@ -1,10 +1,13 @@
-"""Repair-loop coordination tests for app.pipeline.answer_question.
+"""Repair-loop and Insight-wiring coordination tests for
+app.pipeline.answer_question.
 
-app.validator.agent.validate_and_execute is replaced with a scripted stub
-(via monkeypatch) rather than exercised for real here -- it needs a live
-warehouse connection, covered separately by test_validator_integration.py.
-This file verifies the *loop logic* itself: how many NL2SQL calls happen,
-when it stops, and what feedback gets fed back on a retry.
+app.validator.agent.validate_and_execute and app.insight.agent.generate_insight
+are both replaced with scripted stubs (via monkeypatch) rather than exercised
+for real here -- they need a live warehouse connection / are covered in their
+own detail by test_validator_integration.py and test_insight_agent.py. This
+file verifies the *coordination logic* itself: how many NL2SQL calls happen,
+when the repair loop stops, what feedback gets fed back on a retry, and
+whether/how Insight generation gets invoked once validation settles.
 """
 
 from __future__ import annotations
@@ -15,10 +18,12 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from app.catalog.schema import RetrievalResult
+from app.insight.agent import InsightGenerationError
+from app.insight.schema import InsightOutput
 from app.llm.fake import FakeLLMProvider
 from app.nl2sql.schema import NL2SQLOutput
 from app.pipeline import PipelineError, PipelineResult, answer_question
-from app.validator.schema import ValidationCheck, ValidatorOutput
+from app.validator.schema import QueryResult, ValidationCheck, ValidatorOutput
 
 _CONTEXT: list[RetrievalResult] = []
 # validate_and_execute is stubbed in every test here, so no real engine is
@@ -30,12 +35,17 @@ _VALID_RESPONSE = (
     '"assumptions": [], "parameters": {}, "confidence": 0.9}'
 )
 
+_SAMPLE_RESULT = QueryResult(
+    columns=["median_hold_hrs"], rows=[[27.4]], row_count=1, truncated=False
+)
 
-def _pass_output() -> ValidatorOutput:
+
+def _pass_output(result: QueryResult | None = None) -> ValidatorOutput:
     return ValidatorOutput(
         status="pass",
         checks=[ValidationCheck(name="sql_policy", status="pass", details="ok")],
         repairable=False,
+        result=result if result is not None else _SAMPLE_RESULT,
     )
 
 
@@ -72,14 +82,37 @@ class _ScriptedValidator:
         return self._outputs.pop(0)
 
 
+class _StubInsight:
+    """Stand-in for app.insight.agent.generate_insight: records every call
+    it received and either returns a fixed InsightOutput or raises a fixed
+    error, so pipeline tests can assert on *whether/how* Insight generation
+    was invoked without depending on real LLM parsing/verification (that's
+    test_insight_agent.py's job)."""
+
+    def __init__(self, output: InsightOutput | None = None, error: Exception | None = None) -> None:
+        self._output = output if output is not None else InsightOutput(headline="h", narrative="n")
+        self._error = error
+        self.calls: list[tuple[str, QueryResult]] = []
+
+    async def __call__(
+        self, llm_provider: object, *, question: str, result: QueryResult
+    ) -> InsightOutput:
+        self.calls.append((question, result))
+        if self._error is not None:
+            raise self._error
+        return self._output
+
+
 async def _run(
     monkeypatch: pytest.MonkeyPatch,
     provider: FakeLLMProvider,
     validator: _ScriptedValidator,
     *,
     max_repairs: int = 2,
+    insight: _StubInsight | None = None,
 ) -> PipelineResult:
     monkeypatch.setattr("app.pipeline.validate_and_execute", validator)
+    monkeypatch.setattr("app.pipeline.generate_insight", insight or _StubInsight())
     return await answer_question(
         provider,
         engine=_UNUSED_ENGINE,
@@ -198,3 +231,73 @@ async def test_nl2sql_generation_failure_raises_pipeline_error(
         await _run(monkeypatch, provider, validator)
 
     assert len(validator.calls) == 0  # never reached the validator at all
+
+
+async def test_validator_pass_calls_insight_agent_with_the_validated_result(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    provider = FakeLLMProvider()
+    provider.register("hold time", _VALID_RESPONSE)
+    result = QueryResult(columns=["x"], rows=[[1]], row_count=1, truncated=False)
+    validator = _ScriptedValidator([_pass_output(result)])
+    expected_insight = InsightOutput(headline="Buyer hold time rose", narrative="n")
+    insight = _StubInsight(expected_insight)
+
+    pipeline_result = await _run(monkeypatch, provider, validator, insight=insight)
+
+    assert pipeline_result.insight_output is expected_insight
+    assert pipeline_result.insight_error is None
+    assert len(insight.calls) == 1
+    called_question, called_result = insight.calls[0]
+    assert called_question == "Why did hold time spike?"
+    assert called_result is result
+
+
+async def test_validator_terminal_failure_does_not_call_insight_agent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """CLAUDE.md: "failed validation blocks the Insight Agent"."""
+    provider = FakeLLMProvider()
+    provider.register("hold time", _VALID_RESPONSE)
+    validator = _ScriptedValidator([_terminal_fail_output()])
+    insight = _StubInsight()
+
+    pipeline_result = await _run(monkeypatch, provider, validator, insight=insight)
+
+    assert pipeline_result.insight_output is None
+    assert pipeline_result.insight_error is None
+    assert len(insight.calls) == 0
+
+
+async def test_validator_failure_exhausting_repairs_does_not_call_insight_agent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    provider = FakeLLMProvider()
+    provider.register("hold time", _VALID_RESPONSE, _VALID_RESPONSE, _VALID_RESPONSE)
+    validator = _ScriptedValidator(
+        [_repairable_fail_output("x"), _repairable_fail_output("y"), _repairable_fail_output("z")]
+    )
+    insight = _StubInsight()
+
+    pipeline_result = await _run(monkeypatch, provider, validator, max_repairs=2, insight=insight)
+
+    assert pipeline_result.insight_output is None
+    assert len(insight.calls) == 0
+
+
+async def test_insight_generation_failure_is_captured_without_raising(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Insight generation failing (e.g. a model outage) must not discard the
+    already-validated SQL result -- docs/03_ARCHITECTURE.md's failure
+    handling: "model outage: preserve run state and allow retry"."""
+    provider = FakeLLMProvider()
+    provider.register("hold time", _VALID_RESPONSE)
+    validator = _ScriptedValidator([_pass_output()])
+    insight = _StubInsight(error=InsightGenerationError("model outage"))
+
+    pipeline_result = await _run(monkeypatch, provider, validator, insight=insight)
+
+    assert pipeline_result.insight_output is None
+    assert pipeline_result.insight_error == "model outage"
+    assert pipeline_result.validator_output.status == "pass"

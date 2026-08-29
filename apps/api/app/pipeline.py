@@ -1,12 +1,13 @@
-"""Coordinates NL2SQL + Validator with a bounded SQL-repair loop.
+"""Coordinates NL2SQL + Validator + Insight.
 
 Not yet the full state machine (docs/03_ARCHITECTURE.md's RECEIVED -> ... ->
 READY flow) -- that needs an orchestrator wiring in the Schema Agent's
-retrieval, clarification handling, and the Insight/Action agents too, none
-of which exist yet. This is the narrower slice Phase 4 needs: draft SQL,
-validate/execute it, and if the failure is repairable, regenerate with the
-Validator's feedback appended, up to `max_repairs` times total
-(Settings.MAX_SQL_REPAIRS, matching the REPAIR_SQL state's "(max 2)").
+retrieval, clarification handling and the Action agent too, none of which
+exist yet. This is the slice built so far: draft SQL, validate/execute it
+(repairing up to `max_repairs` times, Settings.MAX_SQL_REPAIRS, matching the
+REPAIR_SQL state's "(max 2)"), then -- only once validation actually passes
+-- generate a claim-grounded insight from the result
+(docs/03's step 8: "Insight agent receives the validated result").
 """
 
 from __future__ import annotations
@@ -16,6 +17,8 @@ from dataclasses import dataclass
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from app.catalog.schema import RetrievalResult
+from app.insight.agent import InsightGenerationError, generate_insight
+from app.insight.schema import InsightOutput
 from app.llm.base import LLMProvider
 from app.nl2sql.agent import NL2SQLGenerationError, generate_sql
 from app.nl2sql.schema import NL2SQLOutput
@@ -28,6 +31,14 @@ class PipelineResult:
     nl2sql_output: NL2SQLOutput
     validator_output: ValidatorOutput
     attempts: int  # total NL2SQL calls made: 1 initial + however many repairs
+    # Both None when validation didn't pass -- CLAUDE.md: "failed validation
+    # blocks the Insight Agent". insight_output is None with insight_error set
+    # when validation passed but Insight generation itself failed (e.g. model
+    # outage): the validated SQL result is preserved either way, matching
+    # docs/03's failure handling ("model outage: preserve run state, allow
+    # retry") rather than discarding a good result over a narrative failure.
+    insight_output: InsightOutput | None = None
+    insight_error: str | None = None
 
 
 class PipelineError(Exception):
@@ -88,8 +99,23 @@ async def answer_question(
         repairs_used = attempt - 1
         out_of_repairs = repairs_used >= max_repairs
         if validator_output.status == "pass" or not validator_output.repairable or out_of_repairs:
+            insight_output: InsightOutput | None = None
+            insight_error: str | None = None
+            if validator_output.status == "pass":
+                assert validator_output.result is not None  # guaranteed by a "pass" status
+                try:
+                    insight_output = await generate_insight(
+                        llm_provider, question=question, result=validator_output.result
+                    )
+                except InsightGenerationError as exc:
+                    insight_error = str(exc)
+
             return PipelineResult(
-                nl2sql_output=nl2sql_output, validator_output=validator_output, attempts=attempt
+                nl2sql_output=nl2sql_output,
+                validator_output=validator_output,
+                attempts=attempt,
+                insight_output=insight_output,
+                insight_error=insight_error,
             )
 
         feedback = validator_output.feedback
